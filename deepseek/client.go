@@ -44,7 +44,7 @@ func (ds *DeepSeekAIService) SendMessage(
 	const requestURL string = baseURL + "/chat/completions"
 
 	returnChan := make(chan string)
-	dsOptions := DeepSeekOptions{NewDeepSeekChatModel(), nil, nil, nil, nil, nil, nil}
+	dsOptions := DeepSeekOptions{NewDeepSeekChatModel(), nil, nil, nil, nil, nil, nil, nil, nil}
 
 	for _, option := range options {
 		dsOption, ok := option.(DeepSeekOption)
@@ -74,7 +74,7 @@ func (ds *DeepSeekAIService) SendMessage(
 
 	var responseFormat *networkResponseFormat
 	if dsOptions.responseFormat != nil {
-		responseFormat = newNetworkResponseFormat(string(*dsOptions.responseFormat))
+		responseFormat = &networkResponseFormat{string(*dsOptions.responseFormat)}
 	}
 
 	request := networkRequest{
@@ -86,6 +86,8 @@ func (ds *DeepSeekAIService) SendMessage(
 		Temperature:    dsOptions.temperature,
 		TopP:           dsOptions.topP,
 		Logprobs:       dsOptions.logprobs,
+		Tools:          dsOptions.tools,
+		ToolChoice:     dsOptions.toolChoice,
 	}
 
 	requestBody, err := json.Marshal(request)
@@ -114,18 +116,9 @@ func (ds *DeepSeekAIService) SendMessage(
 		return returnChan, err
 	}
 
-	go func(isStreamed *bool, resp *http.Response, returnChan chan string) {
-		if isStreamed == nil {
-			ds.handleMessageJSONResponse(resp, returnChan)
-			return
-		}
-
-		if !*isStreamed {
-			ds.handleMessageJSONResponse(resp, returnChan)
-		} else {
-			ds.handleStreamedJSONResponse(resp, returnChan)
-		}
-	}(dsOptions.streamed, resp, returnChan)
+	go func(resp *http.Response, returnChan chan string) {
+		ds.handleResponse(resp, returnChan)
+	}(resp, returnChan)
 
 	ds.log.Debugf("DeepSeek responce recieved")
 
@@ -149,60 +142,38 @@ func (ds *DeepSeekAIService) SendMessage(
 	return returnChan, nil
 }
 
-func (c *DeepSeekAIService) handleStreamedJSONResponse(resp *http.Response, outputChan chan<- string) {
+func (ds *DeepSeekAIService) handleResponse(resp *http.Response, outputChan chan<- string) {
 	defer close(outputChan)
 	defer resp.Body.Close()
 
-	reader := bufio.NewReader(resp.Body)
-	for {
-		select {
-		case <-c.ctx.Done():
-			c.log.Debugf("Stream canceled")
-			return
-		default:
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				if err != io.EOF {
-					c.log.Errorf("Stream read error", "error", err)
-				}
-				return
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+
+		var chunk networkResponse
+
+		data := strings.TrimPrefix(scanner.Text(), "data: ")
+
+		if data == "[DONE]" {
+			break
+		}
+
+		decoder := json.NewDecoder(strings.NewReader(data))
+
+		err := decoder.Decode(&chunk)
+		if err != nil && err != io.EOF {
+			ds.log.Errorf("DeepSeek response chunk decode error: %s\n", err.Error())
+			continue
+		}
+
+		for _, choice := range chunk.Choices {
+
+			if choice.Delta != nil {
+				outputChan <- choice.Delta.Content
 			}
 
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "data: ") {
-				data := strings.TrimPrefix(line, "data: ")
-				if data == "[DONE]" {
-					return
-				}
-
-				var chunk networkResponse
-				err := json.Unmarshal([]byte(data), &chunk)
-				if err != nil {
-					c.log.Debugf("Failed to unmarshal delta chunk: %s", err.Error())
-					break
-				}
-
-				for _, choice := range chunk.Choices {
-					outputChan <- choice.Delta.Content
-				}
+			if choice.Message != nil {
+				outputChan <- choice.Message.Content
 			}
 		}
-	}
-}
-
-func (c *DeepSeekAIService) handleMessageJSONResponse(resp *http.Response, outputChan chan<- string) {
-	defer close(outputChan)
-	defer resp.Body.Close()
-
-	var responce networkResponse
-
-	jsonDecoder := json.NewDecoder(resp.Body)
-	jsonDecoder.Decode(&responce)
-
-	select {
-	case <-c.ctx.Done():
-		return
-	default:
-		outputChan <- responce.Choices[0].Message.Content
 	}
 }

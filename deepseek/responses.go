@@ -7,19 +7,14 @@ import "github.com/TitanLombard/llmservice"
 type networkRequest struct {
 	Model          string                  `json:"model"`
 	Messages       []networkRequestMessage `json:"messages"`
-	Streamed       *bool                   `json:"stream"`
-	ResponseFormat *networkResponseFormat  `json:"response_format"`
-	MaxTokens      *int                    `json:"max_tokens"`
-	Temperature    *float32                `json:"temperature"`
-	TopP           *float32                `json:"top_p"`
-	Logprobs       *bool                   `json:"logprobs"`
-}
-
-func newNetworkRequest(model string, messages []networkRequestMessage) *networkRequest {
-	return &networkRequest{
-		Model:    model,
-		Messages: messages,
-	}
+	Streamed       *bool                   `json:"stream,omitempty"`
+	ResponseFormat *networkResponseFormat  `json:"response_format,omitempty"`
+	MaxTokens      *int                    `json:"max_tokens,omitempty"`
+	Temperature    *float32                `json:"temperature,omitempty"`
+	TopP           *float32                `json:"top_p,omitempty"`
+	Logprobs       *bool                   `json:"logprobs,omitempty"`
+	Tools          *[]ToolDefinition       `json:"tools,omitempty"`
+	ToolChoice     *string                 `json:"tool_choice,omitempty"`
 }
 
 type networkRequestMessage struct {
@@ -27,54 +22,77 @@ type networkRequestMessage struct {
 	Content string `json:"content"`
 }
 
-func newNetworkRequestMessage(role, content string) *networkRequestMessage {
-	return &networkRequestMessage{
-		Role:    role,
-		Content: content,
-	}
-}
-
 type networkResponseFormat struct {
 	Type string `json:"type"`
 }
 
-func newNetworkResponseFormat(formatType string) *networkResponseFormat {
-	return &networkResponseFormat{
-		Type: formatType,
-	}
+type ToolDefinition struct {
+	Type     string       `json:"type"`
+	Function ToolFunction `json:"function"`
+}
+
+type ToolFunction struct {
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  ToolParameters `json:"parameters"`
+}
+
+type ToolParameters struct {
+	Type       string                  `json:"type"`
+	Properties map[string]ToolProperty `json:"properties"`
+	Required   []string                `json:"required,omitempty"`
+}
+
+type ToolProperty struct {
+	Type        string `json:"type"`
+	Description string `json:"description"`
 }
 
 // MARK: - Response structs
 
 type networkResponse struct {
-	Id                string                   `json:"id"`
-	Choices           []netoworkResponseChoice `json:"choices"`
-	CreatedAt         string                   `json:"created_at"`
-	Model             string                   `json:"model"`
-	SystemFingerprint string                   `json:"system_fingerprint"`
-	Object            string                   `json:"object"`
-	Usage             networkResponseUsage     `json:"usage"`
+	ID                string                  `json:"id"`
+	Object            string                  `json:"object"`
+	Created           int                     `json:"created"`
+	Model             string                  `json:"model"`
+	Choices           []networkResponseChoice `json:"choices"`
+	Usage             *networkResponseUsage   `json:"usage,omitempty"`
+	SystemFingerprint string                  `json:"system_fingerprint"`
 }
 
-type netoworkResponseChoice struct {
-	FinishReason string                  `json:"finish_reason"`
-	Index        int                     `json:"index"`
-	Message      *networkResponceMessage `json:"message"`
-	Delta        *networkResponceDelta   `json:"delta"`
+type networkResponseChoice struct {
+	Index        int                      `json:"index"`
+	Message      *networkResponseMessage  `json:"message,omitempty"`
+	Delta        *networkResponseMessage  `json:"delta,omitempty"`
+	FinishReason *string                  `json:"finish_reason,omitempty"`
+	Logprobs     *networkResponseLogprobs `json:"logprobs"`
 }
 
-type networkResponceMessage struct {
-	Content          string                   `json:"content"`
-	ReasoningContent string                   `json:"reasoning_content"`
-	Toolchanin       networkResponseToolchain `json:"toolchain"`
-	Role             llmservice.SenderRole    `json:"role"`
+type networkResponseLogprobs struct {
+	Content networkResponseLogprobsContent `json:"content"`
 }
 
-type networkResponceDelta struct {
-	Content string
+type networkResponseLogprobsContent struct {
+	networkResponseLogprobe
+	TopLogprobs []networkResponseLogprobe `json:"top_logprobs"`
 }
 
-type networkResponseToolchain struct {
+type networkResponseLogprobe struct {
+	Token string  `json:"token"`
+	Probs float32 `json:"logprob"`
+	Bytes []int   `json:"bytes"`
+}
+
+type networkResponseMessage struct {
+	Content          string                     `json:"content"`
+	ReasoningContent *string                    `json:"reasoning_content,omitempty"`
+	FinishReason     *string                    `json:"finish_reason,omitempty"`
+	ToolCalls        *[]networkResponseToolCall `json:"tool_calls,omitempty"`
+	Role             llmservice.SenderRole      `json:"role"`
+}
+
+type networkResponseToolCall struct {
+	Index    int                     `json:"index"`
 	Id       string                  `json:"id"`
 	Type     string                  `json:"type"`
 	Function networkResponseFunction `json:"function"`
@@ -91,10 +109,10 @@ type networkResponseUsage struct {
 	PromptCacheHitTokens    int                         `json:"prompt_cache_hit_tokens"`
 	PromptCacheMissTokens   int                         `json:"prompt_cache_miss_tokens"`
 	TotalTokens             int                         `json:"total_tokens"`
-	CompletionTokensDetails netowrkResponceUsageDetails `json:"completion_tokens_details"`
+	CompletionTokensDetails netowrkResponseUsageDetails `json:"completion_tokens_details"`
 }
 
-type netowrkResponceUsageDetails struct {
+type netowrkResponseUsageDetails struct {
 	ReasoningTokens int `json:"reasoning_tokens"`
 }
 

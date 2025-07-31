@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	SenderRoleTool llmservice.SenderRole = "Tool"
+	SenderRoleTool llmservice.SenderRole = "tool"
 )
 
 var (

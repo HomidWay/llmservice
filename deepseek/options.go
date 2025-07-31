@@ -1,17 +1,21 @@
 package deepseek
 
-import "github.com/TitanLombard/llmservice/internal/helpers"
+import (
+	"github.com/TitanLombard/llmservice/internal/helpers"
+)
 
 // MARK: - Concrete options
 
 type DeepSeekOptions struct {
 	model          DeepSeekModel
 	streamed       *bool
-	responseFormat *DeepSeekResponceFormat
+	responseFormat *DeepSeekResponseFormat
 	maxTokens      *int
 	temperature    *float32
 	topP           *float32
 	logprobs       *bool
+	tools          *[]ToolDefinition
+	toolChoice     *string
 }
 
 // MARK: - Option setters interface
@@ -70,15 +74,15 @@ func WithStreamed(isStreamed bool) *DeepSeekOptionStreamed {
 
 // MARK - ResponseFormat option setters
 
-type DeepSeekResponceFormat string
+type DeepSeekResponseFormat string
 
 const (
-	ResponceFormatText DeepSeekResponceFormat = "text"
-	ResponceFormatJson DeepSeekResponceFormat = "json_object"
+	ResponceFormatText DeepSeekResponseFormat = "text"
+	ResponceFormatJson DeepSeekResponseFormat = "json_object"
 )
 
 type DeepSeekOptionResponseFormat struct {
-	responseFormat DeepSeekResponceFormat
+	responseFormat DeepSeekResponseFormat
 }
 
 func (opt DeepSeekOptionResponseFormat) applyFunc(dsOpt *DeepSeekOptions) {
@@ -101,7 +105,7 @@ func (o *DeepSeekOptionResponseFormat) Apply(option interface{}) error {
 	return nil
 }
 
-func WithResponceFormat(responseFormat DeepSeekResponceFormat) *DeepSeekOptionResponseFormat {
+func WithResponceFormat(responseFormat DeepSeekResponseFormat) *DeepSeekOptionResponseFormat {
 	return &DeepSeekOptionResponseFormat{responseFormat: responseFormat}
 }
 
@@ -201,6 +205,54 @@ func WithLogprobs(logprobs bool) *DeepSeekOptionLogprobs {
 	return &DeepSeekOptionLogprobs{logprobs: logprobs}
 }
 
+// MARK - Tools option setters
+
+type DeepSeekOptionTools struct {
+	tools []ToolDefinition
+}
+
+func (opt DeepSeekOptionTools) applyFunc(dsOpt *DeepSeekOptions) {
+	dsOpt.tools = &opt.tools
+}
+
+func (o *DeepSeekOptionTools) Apply(option interface{}) error {
+	if deepSeekOption, ok := option.(*DeepSeekOptions); ok {
+		o.applyFunc(deepSeekOption)
+	} else {
+		return helpers.NewInvalidOptionError((*DeepSeekOption)(nil), option)
+	}
+
+	return nil
+}
+
+func WithTools(tools []ToolDefinition) *DeepSeekOptionTools {
+	return &DeepSeekOptionTools{tools: tools}
+}
+
+// MARK - ToolChoice option setters
+
+type DeepSeekOptionToolChoice struct {
+	toolChoice string
+}
+
+func (opt DeepSeekOptionToolChoice) applyFunc(dsOpt *DeepSeekOptions) {
+	dsOpt.toolChoice = &opt.toolChoice
+}
+
+func (o *DeepSeekOptionToolChoice) Apply(option interface{}) error {
+	if deepSeekOption, ok := option.(*DeepSeekOptions); ok {
+		o.applyFunc(deepSeekOption)
+	} else {
+		return helpers.NewInvalidOptionError((*DeepSeekOption)(nil), option)
+	}
+
+	return nil
+}
+
+func WithToolChoice(toolChoice string) *DeepSeekOptionToolChoice {
+	return &DeepSeekOptionToolChoice{toolChoice: toolChoice}
+}
+
 func isValidOptionType(opt DeepSeekOption) bool {
 	switch opt.(type) {
 	case *DeepSeekOptionModel,
@@ -209,7 +261,9 @@ func isValidOptionType(opt DeepSeekOption) bool {
 		*DeepSeekOptionMaxTokens,
 		*DeepSeekOptionTemperature,
 		*DeepSeekOptionTopP,
-		*DeepSeekOptionLogprobs:
+		*DeepSeekOptionLogprobs,
+		*DeepSeekOptionTools,
+		*DeepSeekOptionToolChoice:
 		return true
 	default:
 		return false
