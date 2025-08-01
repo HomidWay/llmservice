@@ -20,7 +20,7 @@ import (
 type MCPConnection struct {
 	client *client.Client
 
-	capabilities string
+	resources string
 }
 
 func WithSSEMCP(sseEndpoint string) (MCPConnection, error) {
@@ -51,17 +51,15 @@ func NewDeepSeekServiceWithMCP(apikey string, ctx context.Context, log logger.Lo
 			return nil, err
 		}
 
-		capabilities, err := connection.client.Initialize(ctx, mcp.InitializeRequest{})
+		_, err = connection.client.Initialize(ctx, mcp.InitializeRequest{})
 		if err != nil {
 			return nil, err
 		}
 
-		data, err := json.Marshal(capabilities)
+		connection.resources, err = extractResources(connection)
 		if err != nil {
 			return nil, err
 		}
-
-		connection.capabilities = string(data)
 
 		initiatedConnections = append(initiatedConnections, connection)
 	}
@@ -100,15 +98,15 @@ func (ds *DeepSeekAIServiceWithMCP) SendMessage(
 		return returnChan, deepSeekNoMessagesError{}
 	}
 
-	resources := ""
+	mcpResources := ""
 
 	for i, conn := range ds.mcpConnections {
 
 		if i > 0 {
-			resources += "\n"
+			mcpResources += "\n"
 		}
 
-		resources += conn.capabilities
+		mcpResources += fmt.Sprint("MCP[%d] Resources: %s", conn.resources)
 	}
 
 	requestMessages := make([]networkRequestMessage, len(messages))
@@ -117,8 +115,8 @@ func (ds *DeepSeekAIServiceWithMCP) SendMessage(
 
 		messageContent := messages[i].Content()
 
-		if messages[i].Role() == llmservice.SenderRoleSystem && resources != "" {
-			messageContent += fmt.Sprintf("\n\n Available MCP resources: %s", resources)
+		if messages[i].Role() == llmservice.SenderRoleSystem && mcpResources != "" {
+			messageContent += fmt.Sprintf("\n\n Available MCP resources: %s", mcpResources)
 		}
 
 		requestMessages[i] = networkRequestMessage{
@@ -452,4 +450,51 @@ func (ds DeepSeekAIServiceWithMCP) debugPrint(dsOptions DeepSeekOptions) {
 		ds.log.Debugf("- Tools: nil")
 	}
 	ds.log.Debugf("- ToolChoice: %v", dsOptions.toolChoice)
+}
+
+func extractResources(mcpConnection MCPConnection) (string, error) {
+
+	stringBuilder := strings.Builder{}
+
+	resources, err := mcpConnection.client.ListResources(context.Background(), mcp.ListResourcesRequest{})
+	if err != nil {
+		return "", fmt.Errorf("failed to list resources", err.Error())
+	}
+
+	resourceTemplates, err := mcpConnection.client.ListResourceTemplates(context.Background(), mcp.ListResourceTemplatesRequest{})
+	if err != nil {
+		return "", fmt.Errorf("failed to list resource templates", err.Error())
+	}
+
+	if len(resources.Resources) > 0 {
+		stringBuilder.WriteString(fmt.Sprintf("Resources:\n"))
+		for i, resource := range resources.Resources {
+			if i > 0 {
+				stringBuilder.WriteString("\n")
+			}
+			jsonString, err := json.Marshal(resource)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal resource: %s", err.Error())
+			}
+
+			stringBuilder.WriteString(string(jsonString))
+		}
+	}
+
+	if len(resourceTemplates.ResourceTemplates) > 0 {
+		stringBuilder.WriteString(fmt.Sprintf("Network Responses:\n"))
+		for i, networkResponse := range resourceTemplates.ResourceTemplates {
+			if i > 0 {
+				stringBuilder.WriteString("\n")
+			}
+			jsonString, err := json.Marshal(networkResponse)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal network response", err.Error())
+			}
+
+			stringBuilder.WriteString(string(jsonString))
+		}
+	}
+
+	return stringBuilder.String(), nil
 }
