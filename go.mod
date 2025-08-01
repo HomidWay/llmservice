@@ -10,7 +10,7 @@ require (
 )
 
 require (
-	github.com/TitanLombard/logger v0.0.1
+	github.com/TitanLombard/logger v0.0.4
 	github.com/dlclark/regexp2 v1.10.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mark3labs/mcp-go v0.31.0

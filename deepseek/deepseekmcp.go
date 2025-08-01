@@ -106,7 +106,7 @@ func (ds *DeepSeekAIServiceWithMCP) SendMessage(
 			mcpResources += "\n"
 		}
 
-		mcpResources += fmt.Sprint("MCP[%d] Resources: %s", conn.resources)
+		mcpResources += fmt.Sprintf("MCP[%d] Resources: %s", i, conn.resources)
 	}
 
 	requestMessages := make([]networkRequestMessage, len(messages))
@@ -458,16 +458,16 @@ func extractResources(mcpConnection MCPConnection) (string, error) {
 
 	resources, err := mcpConnection.client.ListResources(context.Background(), mcp.ListResourcesRequest{})
 	if err != nil {
-		return "", fmt.Errorf("failed to list resources", err.Error())
+		return "", fmt.Errorf("failed to list resources: %s", err.Error())
 	}
 
 	resourceTemplates, err := mcpConnection.client.ListResourceTemplates(context.Background(), mcp.ListResourceTemplatesRequest{})
 	if err != nil {
-		return "", fmt.Errorf("failed to list resource templates", err.Error())
+		return "", fmt.Errorf("failed to list resource templates: %s", err.Error())
 	}
 
 	if len(resources.Resources) > 0 {
-		stringBuilder.WriteString(fmt.Sprintf("Resources:\n"))
+		stringBuilder.WriteString("Resources:\n")
 		for i, resource := range resources.Resources {
 			if i > 0 {
 				stringBuilder.WriteString("\n")
@@ -482,14 +482,14 @@ func extractResources(mcpConnection MCPConnection) (string, error) {
 	}
 
 	if len(resourceTemplates.ResourceTemplates) > 0 {
-		stringBuilder.WriteString(fmt.Sprintf("Network Responses:\n"))
+		stringBuilder.WriteString("ResourceTemplates:\n")
 		for i, networkResponse := range resourceTemplates.ResourceTemplates {
 			if i > 0 {
 				stringBuilder.WriteString("\n")
 			}
 			jsonString, err := json.Marshal(networkResponse)
 			if err != nil {
-				return "", fmt.Errorf("failed to marshal network response", err.Error())
+				return "", fmt.Errorf("failed to marshal resource template: %s", err.Error())
 			}
 
 			stringBuilder.WriteString(string(jsonString))

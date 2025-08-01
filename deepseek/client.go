@@ -41,7 +41,7 @@ func (ds *DeepSeekAIService) SendMessage(
 	options ...llmservice.Option,
 ) (chan string, error) {
 
-	const requestURL string = baseURL + "/chat/completions"
+	const requestURL string = baseURL + "chat/completions"
 
 	returnChan := make(chan string)
 	dsOptions := DeepSeekOptions{NewDeepSeekChatModel(), nil, nil, nil, nil, nil, nil, nil, nil}

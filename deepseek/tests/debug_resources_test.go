@@ -2,7 +2,6 @@ package deepseek_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -98,9 +97,6 @@ func TestSendMessage_streamed(t *testing.T) {
 		*sysMessage,
 		*usrMessage,
 	}
-
-	json, _ := json.Marshal([]deepseek.ToolDefinition{deepseek.ResourceCallTool()})
-	t.Log(string(json))
 
 	returnChan, err := llmInterfaceCall(
 		deepSeek,
