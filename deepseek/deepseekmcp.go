@@ -19,6 +19,8 @@ import (
 
 type MCPConnection struct {
 	client *client.Client
+
+	capabilities string
 }
 
 func WithSSEMCP(sseEndpoint string) (MCPConnection, error) {
@@ -35,26 +37,36 @@ type DeepSeekAIServiceWithMCP struct {
 	mcpConnections []MCPConnection
 }
 
-func NewDeepSeekServiceWithMCP(apikey string, ctx context.Context, log logger.Logger, mcpConnections ...MCPConnection) *DeepSeekAIServiceWithMCP {
+func NewDeepSeekServiceWithMCP(apikey string, ctx context.Context, log logger.Logger, mcpConnections ...MCPConnection) (*DeepSeekAIServiceWithMCP, error) {
 
 	if log == nil {
 		log = logger.Default(logger.VerbosityInfo, nil)
 	}
 
+	var initiatedConnections []MCPConnection
+
 	for _, connection := range mcpConnections {
 		err := connection.client.Start(ctx)
 		if err != nil {
-			continue
+			return nil, err
 		}
 
-		_, err = connection.client.Initialize(ctx, mcp.InitializeRequest{})
+		capabilities, err := connection.client.Initialize(ctx, mcp.InitializeRequest{})
 		if err != nil {
-			continue
+			return nil, err
 		}
+
+		data, err := json.Marshal(capabilities)
+		if err != nil {
+			return nil, err
+		}
+
+		connection.capabilities = string(data)
+
+		initiatedConnections = append(initiatedConnections, connection)
 	}
 
-	return &DeepSeekAIServiceWithMCP{apikey: apikey, ctx: ctx, log: log, mcpConnections: mcpConnections}
-
+	return &DeepSeekAIServiceWithMCP{apikey: apikey, ctx: ctx, log: log, mcpConnections: initiatedConnections}, nil
 }
 
 func (ds *DeepSeekAIServiceWithMCP) ServiceTokenLimit() int {
@@ -88,9 +100,15 @@ func (ds *DeepSeekAIServiceWithMCP) SendMessage(
 		return returnChan, deepSeekNoMessagesError{}
 	}
 
-	resources, err := extractResources(ds.mcpConnections)
-	if err != nil {
-		return returnChan, fmt.Errorf("failed to extract resources from the request: %w", err)
+	resources := ""
+
+	for i, conn := range ds.mcpConnections {
+
+		if i > 0 {
+			resources += "\n"
+		}
+
+		resources += conn.capabilities
 	}
 
 	requestMessages := make([]networkRequestMessage, len(messages))
@@ -99,7 +117,7 @@ func (ds *DeepSeekAIServiceWithMCP) SendMessage(
 
 		messageContent := messages[i].Content()
 
-		if messages[i].Role() == llmservice.SenderRoleSystem {
+		if messages[i].Role() == llmservice.SenderRoleSystem && resources != "" {
 			messageContent += fmt.Sprintf("\n\n Available MCP resources: %s", resources)
 		}
 
@@ -380,45 +398,38 @@ func (c *DeepSeekAIServiceWithMCP) handleToolCall(toolCalls []networkResponseToo
 			}
 
 			result += fmt.Sprintf("Content of resource at URI %s:\n%s\n", args.URI, content)
-		}
-	}
 
-	return result
-}
-
-func extractResources(mcpConnections []MCPConnection) (string, error) {
-
-	stringBuilder := strings.Builder{}
-
-	for i, connection := range mcpConnections {
-
-		if i > 0 {
-			stringBuilder.WriteString("\n")
-		}
-
-		stringBuilder.WriteString(fmt.Sprintf("MCP ID: %d\n", i))
-
-		resource, err := connection.client.ListResourceTemplates(context.Background(), mcp.ListResourceTemplatesRequest{})
-		if err != nil {
 			continue
 		}
 
-		for j, resource := range resource.ResourceTemplates {
+		for _, mcpConn := range c.mcpConnections {
 
-			if j > 0 {
-				stringBuilder.WriteString("\n")
+			arguments := mcp.CallToolParams{
+				Name:      toolCall.Function.Name,
+				Arguments: toolCall.Function.Arguments,
 			}
 
-			jsonString, err := json.Marshal(resource)
+			request := mcp.CallToolRequest{
+				Params: arguments,
+			}
+
+			mcpToolCallResult, err := mcpConn.client.CallTool(context.Background(), request)
 			if err != nil {
 				continue
 			}
 
-			stringBuilder.WriteString(string(jsonString))
+			for _, content := range mcpToolCallResult.Content {
+				switch v := content.(type) {
+				case mcp.TextContent:
+					result += fmt.Sprintf("Content of tool call id: %v:\n%s\n", toolCall.Id, v.Text)
+				default:
+					continue
+				}
+			}
 		}
 	}
 
-	return stringBuilder.String(), nil
+	return result
 }
 
 func (ds DeepSeekAIServiceWithMCP) debugPrint(dsOptions DeepSeekOptions) {

@@ -25,7 +25,7 @@ const (
 
 func TestDebugMCPServerEndpoints(t *testing.T) {
 
-	client, err := client.NewSSEMCPClient("http://127.0.0.1:8770/sse")
+	client, err := client.NewSSEMCPClient("http://192.168.50.80:8770/sse")
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -66,7 +66,7 @@ func TestDebugMCPServerEndpoints(t *testing.T) {
 
 func TestSendMessage_streamed(t *testing.T) {
 
-	mcpConnection, err := deepseek.WithSSEMCP("http://127.0.0.1:8770/sse")
+	mcpConnection, err := deepseek.WithSSEMCP("http://192.168.50.80:8770/sse")
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -85,7 +85,11 @@ func TestSendMessage_streamed(t *testing.T) {
 
 	log := logger.Default(logger.VerbosityDebug, nil)
 	ctx := context.Background()
-	deepSeek := deepseek.NewDeepSeekServiceWithMCP(apikey, ctx, log, mcpConnection)
+	deepSeek, err := deepseek.NewDeepSeekServiceWithMCP(apikey, ctx, log, mcpConnection)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
 
 	sysMessage, _ := deepseek.NewMessage(llmservice.SenderRoleSystem, sysMessageContent)
 	usrMessage, _ := deepseek.NewMessage(llmservice.SenderRoleUser, userMessageContent)
