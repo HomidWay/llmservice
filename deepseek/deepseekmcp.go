@@ -144,8 +144,7 @@ func (ds *DeepSeekAIServiceWithMCP) SendMessage(
 	}
 
 	requestBody, err := json.Marshal(request)
-
-	ds.log.Debugf("%s", requestBody)
+	ds.log.Debugf("%s", string(requestBody))
 
 	if err != nil {
 		return returnChan, err
@@ -367,7 +366,7 @@ func (c *DeepSeekAIServiceWithMCP) handleToolCall(toolCalls []networkResponseToo
 			if len(c.mcpConnections) > args.ID {
 				conn = c.mcpConnections[args.ID]
 			} else {
-				result += fmt.Sprintf("Failed to find MCP instance with ID %s\n", args.ID)
+				result += fmt.Sprintf("Failed to find MCP instance with ID %d\n", args.ID)
 				continue
 			}
 
