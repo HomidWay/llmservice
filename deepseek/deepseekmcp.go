@@ -143,42 +143,69 @@ func (ds *DeepSeekAIServiceWithMCP) SendMessage(
 		ToolChoice:     dsOptions.toolChoice,
 	}
 
-	requestBody, err := json.Marshal(request)
-	ds.log.Debugf("%s", string(requestBody))
-
-	if err != nil {
-		return returnChan, err
-	}
-
-	ds.log.Debugf("DeepSeek request created")
-
-	req, err := http.NewRequestWithContext(ds.ctx, "POST", requestURL, bytes.NewBuffer(requestBody))
-	if err != nil {
-		return returnChan, err
-	}
-
-	authHeadervalue := "Bearer " + ds.apikey
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", authHeadervalue)
-
-	client := &http.Client{}
-
-	ds.log.Debugf("DeepSeek request sent")
-	resp, err := client.Do(req)
-	if err != nil {
-		return returnChan, err
-	}
-
-	go func(messages []llmservice.RequestMessage, resp *http.Response, returnChan chan string) {
+	go func(initialRequest networkRequest, returnChan chan string) {
 
 		defer close(returnChan)
-		defer resp.Body.Close()
-
-		var body io.ReadCloser = resp.Body
+		request := initialRequest
 
 		for {
-			toolCalls := ds.handleResponse(body, returnChan)
+
+			requestBody, err := json.Marshal(request)
+			ds.log.Debugf("%s", string(requestBody))
+
+			if err != nil {
+				ds.log.Errorf("Error marshalling request: %s", err)
+				returnChan <- err.Error()
+				break
+			}
+
+			ds.log.Debugf("DeepSeek request created")
+
+			req, err := http.NewRequestWithContext(ds.ctx, "POST", requestURL, bytes.NewBuffer(requestBody))
+			if err != nil {
+				ds.log.Errorf("Error creating HTTP request: %s", err)
+				returnChan <- err.Error()
+				break
+			}
+
+			authHeadervalue := "Bearer " + ds.apikey
+
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", authHeadervalue)
+
+			client := &http.Client{}
+
+			ds.log.Debugf("DeepSeek request sent")
+			resp, err := client.Do(req)
+			if err != nil {
+				ds.log.Errorf("Error sending HTTP request: %s", err)
+				returnChan <- err.Error()
+				break
+			}
+
+			ds.log.Debugf("DeepSeek responce recieved")
+
+			if resp.StatusCode != http.StatusOK {
+				var dsErr deepSeekRequestError
+
+				dsErr.Code = resp.StatusCode
+				dsErr.Message = fmt.Sprintf("DeepSeek returned error: %s", resp.Status)
+
+				var responseErr networkResponseError
+				rawBody, _ := io.ReadAll(resp.Body)
+				err := json.Unmarshal(rawBody, &responseErr)
+				if err == nil {
+					dsErr.ErrorBody = &responseErr
+				}
+
+				ds.log.Errorf("Error sending HTTP request: %s", dsErr)
+				returnChan <- dsErr.Error()
+				break
+			}
+
+			ds.log.Debugf("DeepSeek response Status: %s\n", resp.Status)
+
+			toolCalls := ds.handleResponse(resp.Body, returnChan)
 
 			if len(toolCalls) == 0 {
 				break
@@ -195,65 +222,16 @@ func (ds *DeepSeekAIServiceWithMCP) SendMessage(
 				toolCallResults,
 			)
 
-			reqMessage := networkRequestMessage{
+			toolResultMessage := networkRequestMessage{
 				Role:    string(mcpResultMessage.role),
 				Content: mcpResultMessage.content,
 			}
 
-			followupRequest := request
-			followupRequest.Messages = append(followupRequest.Messages, reqMessage)
-
-			requestBody, err := json.Marshal(followupRequest)
-
-			ds.log.Debugf("%s", requestBody)
-			if err != nil {
-				break
-			}
-
-			ds.log.Debugf("DeepSeek request created")
-
-			req, err := http.NewRequestWithContext(ds.ctx, "POST", requestURL, bytes.NewBuffer(requestBody))
-			if err != nil {
-				break
-			}
-
-			authHeadervalue := "Bearer " + ds.apikey
-
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("Authorization", authHeadervalue)
-
-			client := &http.Client{}
-
-			ds.log.Debugf("DeepSeek request sent")
-			resp, err := client.Do(req)
-			if err != nil {
-				break
-			}
-
-			body = resp.Body
+			request.Messages = append(request.Messages, toolResultMessage)
 		}
 
-	}(messages, resp, returnChan)
+	}(request, returnChan)
 
-	ds.log.Debugf("DeepSeek responce recieved")
-
-	if resp.StatusCode != http.StatusOK {
-		var dsErr deepSeekRequestError
-
-		dsErr.Code = resp.StatusCode
-		dsErr.Message = fmt.Sprintf("DeepSeek returned error: %s", resp.Status)
-
-		var responseErr networkResponseError
-		rawBody, _ := io.ReadAll(resp.Body)
-		err := json.Unmarshal(rawBody, &responseErr)
-		if err == nil {
-			dsErr.ErrorBody = &responseErr
-		}
-
-		return returnChan, dsErr
-	}
-
-	ds.log.Debugf("DeepSeek response Status: %s\n", resp.Status)
 	return returnChan, nil
 }
 
