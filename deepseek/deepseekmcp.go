@@ -355,7 +355,7 @@ func (c *DeepSeekAIServiceWithMCP) handleToolCall(toolCalls []networkResponseToo
 			})
 
 			if err != nil {
-				result += fmt.Sprintf("Failed to fetch resource at URI %s\n", args.URI)
+				result += fmt.Sprintf("Failed to fetch resource at URI %s\n with error: %s", args.URI, err.Error())
 				continue
 			}
 
