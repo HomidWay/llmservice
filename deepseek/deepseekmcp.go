@@ -326,7 +326,7 @@ func (c *DeepSeekAIServiceWithMCP) handleToolCall(toolCalls []networkResponseToo
 
 	result := make([]networkRequestMessage, len(toolCalls))
 
-	for _, toolCall := range toolCalls {
+	for i, toolCall := range toolCalls {
 
 		toolID := toolCall.ID
 
@@ -340,8 +340,7 @@ func (c *DeepSeekAIServiceWithMCP) handleToolCall(toolCalls []networkResponseToo
 
 			err := json.Unmarshal([]byte(toolCall.Function.Arguments), &args)
 			if err != nil {
-				toolContents, _ := newToolCallTextResult("Failed to unmarshal arguments for resource call tool.")
-				result = append(result, networkRequestMessage{Role: string(SenderRoleTool), ToolID: &toolID, Content: toolContents})
+				result[i] = networkRequestMessage{Role: string(SenderRoleTool), ToolID: &toolID, Content: "Failed to unmarshal arguments for resource call tool."}
 				continue
 			}
 
@@ -350,8 +349,7 @@ func (c *DeepSeekAIServiceWithMCP) handleToolCall(toolCalls []networkResponseToo
 			if len(c.mcpConnections) > args.ID {
 				conn = c.mcpConnections[args.ID]
 			} else {
-				toolContents, _ := newToolCallTextResult(fmt.Sprintf("Failed to find MCP instance with ID %d\n", args.ID))
-				result = append(result, networkRequestMessage{Role: string(SenderRoleTool), ToolID: &toolID, Content: toolContents})
+				result[i] = networkRequestMessage{Role: string(SenderRoleTool), ToolID: &toolID, Content: fmt.Sprintf("Failed to find MCP instance with ID %d\n", args.ID)}
 				continue
 			}
 
@@ -362,8 +360,7 @@ func (c *DeepSeekAIServiceWithMCP) handleToolCall(toolCalls []networkResponseToo
 			})
 
 			if err != nil {
-				toolContents, _ := newToolCallTextResult(fmt.Sprintf("Failed to fetch resource at URI %s\n with error: %s", args.URI, err.Error()))
-				result = append(result, networkRequestMessage{Role: string(SenderRoleTool), ToolID: &toolID, Content: toolContents})
+				result[i] = networkRequestMessage{Role: string(SenderRoleTool), ToolID: &toolID, Content: fmt.Sprintf("Failed to fetch resource at URI %s\n with error: %s", args.URI, err.Error())}
 				continue
 			}
 
@@ -379,8 +376,8 @@ func (c *DeepSeekAIServiceWithMCP) handleToolCall(toolCalls []networkResponseToo
 					content += fmt.Sprintf("Unknown resource type: %T\n", item)
 				}
 			}
-			toolContents, _ := newToolCallTextResult(content)
-			result = append(result, networkRequestMessage{Role: string(SenderRoleTool), ToolID: &toolID, Content: toolContents})
+
+			result[i] = networkRequestMessage{Role: string(SenderRoleTool), ToolID: &toolID, Content: content}
 
 			continue
 		}
@@ -401,30 +398,26 @@ func (c *DeepSeekAIServiceWithMCP) handleToolCall(toolCalls []networkResponseToo
 				continue
 			}
 
-			for _, content := range mcpToolCallResult.Content {
+			textContent := ""
+
+			for i, content := range mcpToolCallResult.Content {
 				switch v := content.(type) {
 				case mcp.TextContent:
-					toolContents, _ := newToolCallTextResult(v.Text)
-					result = append(result, networkRequestMessage{Role: string(SenderRoleTool), ToolID: &toolID, Content: toolContents})
+					if i > 0 {
+						textContent += "\n"
+					}
+
+					textContent += v.Text
 				default:
 					continue
 				}
 			}
+
+			result[i] = networkRequestMessage{Role: string(SenderRoleTool), ToolID: &toolID, Content: textContent}
 		}
 	}
 
 	return result
-}
-
-func newToolCallTextResult(text string) (string, error) {
-	resultMap := map[string]interface{}{"result": text}
-
-	jsonData, err := json.Marshal(resultMap)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal tool call result: %s", err.Error())
-	}
-
-	return string(jsonData), nil
 }
 
 func (ds DeepSeekAIServiceWithMCP) debugPrint(dsOptions DeepSeekOptions) {
