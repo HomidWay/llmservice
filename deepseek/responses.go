@@ -18,8 +18,9 @@ type networkRequest struct {
 }
 
 type networkRequestMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string  `json:"role"`
+	ToolID  *string `json:"tool_call_id,omitempty"`
+	Content string  `json:"content"`
 }
 
 type networkResponseFormat struct {
@@ -93,7 +94,7 @@ type networkResponseMessage struct {
 
 type networkResponseToolCall struct {
 	Index    int                     `json:"index"`
-	Id       string                  `json:"id"`
+	ID       string                  `json:"id"`
 	Type     string                  `json:"type"`
 	Function networkResponseFunction `json:"function"`
 }
