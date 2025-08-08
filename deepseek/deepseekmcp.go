@@ -116,6 +116,18 @@ func (ds *DeepSeekAIServiceWithMCP) SendMessage(
 		messageContent := messages[i].Content()
 
 		if messages[i].Role() == llmservice.SenderRoleSystem && mcpResources != "" {
+
+			messageContent += `
+			
+			Tool call instructions:
+				1. To Call MCP tools use built-in field tool_calls
+				2. Always strictly follow Tool and Resource format desctiption.
+				3. Don't write anything to the user if you decide to call a tool, execute tool calls silently.
+				4. You can call multiple tools in one go.
+				5. Always check if you should do a tool call to process user's request.
+				6. IMPORTANT: NO MATTER HOW MANY MESSAGES WERE SENT BEFORE, KEEP USING TOOL CALLS IF NECESSARY
+			`
+
 			messageContent += fmt.Sprintf("\n\n Available MCP resources: %s", mcpResources)
 		}
 
