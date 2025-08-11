@@ -25,17 +25,12 @@ type RequestMessage struct {
 }
 
 // NewRequestMessage creates a new validated message with domain invariants
-func NewMessage(role string, content string, toolCalls []llmservice.MessageToolCall) (*RequestMessage, error) {
-
-	if content == "" {
-		return nil, ErrEmptyContent
-	}
-
+func NewMessage(role string, content string, toolCalls []llmservice.MessageToolCall) *RequestMessage {
 	return &RequestMessage{
 		role:      role,
 		content:   strings.TrimSpace(content),
 		toolCalls: toolCalls,
-	}, nil
+	}
 }
 
 // Role returns the message role (immutable)
@@ -61,6 +56,6 @@ func (m RequestMessage) TokenCount() int {
 	return len(tokenizer.Encode(m.Content(), nil, nil))
 }
 
-func (m RequestMessage) SetContent(newContent string) (*RequestMessage, error) {
+func (m RequestMessage) SetContent(newContent string) *RequestMessage {
 	return NewMessage(m.role, newContent, m.toolCalls)
 }

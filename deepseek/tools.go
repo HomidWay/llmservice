@@ -1,5 +1,10 @@
 package deepseek
 
+type ResourceCall struct {
+	McpIndex int    `json:"mcp_index"`
+	URI      string `json:"uri"`
+}
+
 func ResourceCallTool() DeepSeekToolDefinition {
 	return DeepSeekToolDefinition{
 		Type: "function",

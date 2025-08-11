@@ -197,7 +197,82 @@ func (ds *DeepSeekAIService) SendMessage(
 	return returnChan, nil
 }
 
-func (ds *DeepSeekAIService) HandleToolCall()
+func (ds *DeepSeekAIService) HandleToolCall(toolCalls []llmservice.MessageToolCall) ([]llmservice.RequestMessage, error) {
+
+	messages := make([]llmservice.RequestMessage, len(toolCalls))
+
+	for i, toolCall := range toolCalls {
+
+		if toolCall.ToolName() == ResourceCallTool().Function.Name {
+
+			jsonData, err := json.Marshal(toolCall.Args())
+			if err != nil {
+				messages[i] = NewMessage(
+					string(SenderRoleTool),
+					fmt.Sprintf("Failed to marshal arguments string. Error: %s", err.Error()),
+					nil,
+				)
+				continue
+			}
+
+			var resourceCall ResourceCall
+			err = json.Unmarshal(jsonData, &resourceCall)
+			if err != nil {
+				messages[i] = NewMessage(
+					string(SenderRoleTool),
+					fmt.Sprintf("Incorrect argument json. Expected {mcp_id: <Int>, uri: <String>}; Got: %s, err: %s", toolCall.Args(), err.Error()),
+					nil,
+				)
+				continue
+			}
+
+			if len(ds.mcpConnections)-1 < resourceCall.McpIndex {
+				return nil, fmt.Errorf("invalid mcp_index. MCP connections count is %d; Got: %d", len(ds.mcpConnections), resourceCall.McpIndex)
+			}
+
+			resourceReadReq := mcp.ReadResourceRequest{
+				Params: mcp.ReadResourceParams{
+					URI: resourceCall.URI,
+				},
+			}
+
+			result, err := ds.mcpConnections[resourceCall.McpIndex].client.ReadResource(ds.ctx, resourceReadReq)
+
+			if err != nil {
+				messages[i] = NewMessage(
+					string(SenderRoleTool),
+					fmt.Sprintf("MCP Resource read failed with error: %s", err.Error()),
+					nil,
+				)
+				continue
+			}
+
+			textData := ""
+
+			for _, chunk := range result.Contents {
+				switch v := chunk.(type) {
+				case mcp.TextResourceContents:
+					textData += v.Text
+				case mcp.BlobResourceContents:
+					textData += v.Blob
+				}
+			}
+
+			messages[i] = NewMessage(
+				string(SenderRoleTool),
+				textData,
+				nil,
+			)
+
+			continue
+		}
+
+		
+
+	}
+
+	return messages, nil
+}
 
 func (ds *DeepSeekAIService) handleResponse(readCloser io.ReadCloser, outputChan chan<- llmservice.ResponseMessage) error {
 	defer close(outputChan)
