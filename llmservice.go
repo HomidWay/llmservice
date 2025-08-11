@@ -38,5 +38,5 @@ type LLMService interface {
 
 type LLMServiceMCP interface {
 	LLMService
-	HandleToolCall([]MessageToolCall) (RequestMessage, error)
+	HandleToolCall([]MessageToolCall) ([]RequestMessage, error)
 }
