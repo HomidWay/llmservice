@@ -1,15 +1,10 @@
 package deepseek
 
-import (
-	"github.com/TitanLombard/llmservice"
-	"github.com/pkoukk/tiktoken-go"
-)
-
 // MARK: - Request structs
 
 type DeepSeekCompletionCall struct {
 	Model          string                    `json:"model"`
-	Messages       []deepSeekRequestMessage  `json:"messages"`
+	Messages       []DeepSeekMessage         `json:"messages"`
 	Streamed       *bool                     `json:"stream,omitempty"`
 	ResponseFormat *DeepSeekResponseFormat   `json:"response_format,omitempty"`
 	MaxTokens      *int                      `json:"max_tokens,omitempty"`
@@ -18,48 +13,6 @@ type DeepSeekCompletionCall struct {
 	Logprobs       *bool                     `json:"logprobs,omitempty"`
 	Tools          *[]DeepSeekToolDefinition `json:"tools,omitempty"`
 	ToolChoice     *string                   `json:"tool_choice,omitempty"`
-}
-
-type deepSeekRequestMessage struct {
-	ContentString          string                      `json:"content,omitempty"`
-	ReasoningContentString *string                     `json:"reasoning_content,omitempty"`
-	ToolCallsArr           *[]DeepSeekToolCallResponse `json:"tool_calls,omitempty"`
-	RoleString             string                      `json:"role"`
-}
-
-func (msg deepSeekRequestMessage) Role() string {
-	return msg.RoleString
-}
-
-func (msg deepSeekRequestMessage) MessageContent() string {
-	return msg.ContentString
-}
-
-func (msg deepSeekRequestMessage) ReasoningContent() *string {
-	return msg.ReasoningContentString
-}
-
-func (msg deepSeekRequestMessage) ToolCalls() []llmservice.MessageToolCall {
-
-	if msg.ToolCallsArr == nil {
-		return nil
-	}
-
-	toolCalls := make([]llmservice.MessageToolCall, len(*msg.ToolCallsArr))
-
-	for i, toolCall := range *msg.ToolCallsArr {
-		toolCalls[i] = toolCall
-	}
-
-	return toolCalls
-}
-
-func (msg deepSeekRequestMessage) TokenCount() int {
-	tokenizer, err := tiktoken.GetEncoding("cl100k_base")
-	if err != nil {
-		return 0
-	}
-	return len(tokenizer.Encode(msg.MessageContent(), nil, nil))
 }
 
 type DeepSeekResponseFormat struct {
@@ -102,8 +55,8 @@ type networkResponse struct {
 
 type deepSeekChoice struct {
 	Index        int                     `json:"index"`
-	Message      *deepSeekRequestMessage `json:"message,omitempty"`
-	Delta        *deepSeekRequestMessage `json:"delta,omitempty"`
+	Message      *DeepSeekMessage        `json:"message,omitempty"`
+	Delta        *DeepSeekMessage        `json:"delta,omitempty"`
 	FinishReason *string                 `json:"finish_reason"`
 	Logprobes    networkResponseLogprobs `json:"logprobes,omitempty"`
 }
@@ -123,7 +76,7 @@ type networkResponseLogprobe struct {
 	Bytes []int   `json:"bytes"`
 }
 
-type DeepSeekToolCallResponse struct {
+type DeepSeekToolCall struct {
 	IndexVal int                     `json:"index"`
 	IDString string                  `json:"id"`
 	Type     string                  `json:"type"`
@@ -131,26 +84,26 @@ type DeepSeekToolCallResponse struct {
 }
 
 // Args implements llmservice.MessageToolCall.
-func (d DeepSeekToolCallResponse) Args() string {
+func (d DeepSeekToolCall) Args() string {
 	return d.Function.Arguments
 }
 
 // ToolName implements llmservice.MessageToolCall.
-func (d DeepSeekToolCallResponse) ToolName() string {
+func (d DeepSeekToolCall) ToolName() string {
 	return d.Function.Name
 }
 
 // ID implements llmservice.MessageToolCall.
-func (d DeepSeekToolCallResponse) ID() string {
+func (d DeepSeekToolCall) ID() string {
 	return d.IDString
 }
 
-func (d DeepSeekToolCallResponse) Index() int {
+func (d DeepSeekToolCall) Index() int {
 	return d.IndexVal
 }
 
 // ToolCall implements llmservice.MessageToolCall.
-func (d DeepSeekToolCallResponse) ToolCall() map[string]interface{} {
+func (d DeepSeekToolCall) ToolCall() map[string]interface{} {
 
 	toolCalls := make(map[string]interface{})
 

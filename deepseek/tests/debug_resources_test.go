@@ -19,7 +19,7 @@ var apiKeyFlag = flag.String("apikey", "", "DeepSeekApi key")
 
 const (
 	sysMessageContent  = "This is a test for MCP client."
-	userMessageContent = "Напиши привет, а после вызови MCP и напиши короткую сводку данных о сотруднике с ID 5560 с его показателями за неделю за неделю, "
+	userMessageContent = "Напиши привет, а после вызови MCP и напиши короткую сводку данных о сотруднике с ID 5560 с его показателями за неделю за неделю, сегодня 11.08.2025"
 )
 
 func TestDebugMCPServerEndpoints(t *testing.T) {
@@ -93,66 +93,56 @@ func TestSendMessage_streamed(t *testing.T) {
 	sysMessage := deepseek.NewMessage(string(llmservice.SenderRoleSystem), sysMessageContent, nil)
 	usrMessage := deepseek.NewMessage(string(llmservice.SenderRoleUser), userMessageContent, nil)
 
-	messages := []llmservice.RequestMessage{
+	messages := []llmservice.LLMMessage{
 		*sysMessage,
 		*usrMessage,
 	}
 
-	returnChan, err := llmInterfaceCall(
-		deepSeek,
-		messages,
-		deepseek.WithModel(deepseek.NewDeepSeekChatModel()),
-		deepseek.WithStreamed(true),
-		deepseek.WithTools([]deepseek.DeepSeekToolDefinition{deepseek.ResourceCallTool()}),
-	)
+	for {
+		returnChan, err := llmInterfaceCall(
+			deepSeek,
+			messages,
+			deepseek.WithModel(deepseek.NewDeepSeekChatModel()),
+			deepseek.WithStreamed(false),
+			deepseek.WithTools([]deepseek.DeepSeekToolDefinition{deepseek.ResourceCallTool()}),
+		)
 
-	var invalidOption *helpers.InvalidOptionError
-	if errors.As(err, &invalidOption) {
-		t.Fatalf("Invalid option type: %s", invalidOption.Error())
-		t.FailNow()
-	}
-	if err != nil {
-		t.Errorf("Test failed due to error in deep seek request: %s", err.Error())
-		t.FailNow()
-	}
-
-	type ToolCall struct {
-		ID   string
-		Name string
-		Args string
-	}
-
-	toolCalls := make(map[int]ToolCall, 0)
-	fmt.Println("============ RESPONSE ==================")
-	for line := range returnChan {
-		fmt.Print(line.MessageContent())
-
-		for _, call := range line.ToolCalls() {
-			var toolCall ToolCall
-			var ok bool
-
-			if toolCall, ok = toolCalls[call.Index()]; !ok {
-				toolCall = ToolCall{Name: "", Args: ""}
-			}
-
-			if toolCall.ID == "" {
-				toolCall.ID = call.ID()
-			}
-
-			toolCall.Name += call.ToolName()
-			toolCall.Args += call.Args()
-			toolCalls[call.Index()] = toolCall
+		var invalidOption *helpers.InvalidOptionError
+		if errors.As(err, &invalidOption) {
+			t.Fatalf("Invalid option type: %s", invalidOption.Error())
+			t.FailNow()
 		}
+		if err != nil {
+			t.Errorf("Test failed due to error in deep seek request: %s", err.Error())
+			t.FailNow()
+		}
+
+		responseMessage := <-returnChan
+
+		messages = append(messages, responseMessage)
+
+		fmt.Println("============ RESPONSE ==================")
+
+		fmt.Println(responseMessage.MessageContent())
+
+		fmt.Println()
+		fmt.Println("Tool Calls:")
+		for id, tool := range responseMessage.ToolCalls() {
+			fmt.Printf("(%d: %s) %s: %s\n\n", id, tool.ID(), tool.ToolName(), tool.Args())
+		}
+		fmt.Println("========================================")
+		fmt.Println()
+
+		if responseMessage.ToolCalls() == nil {
+			break
+		}
+
+		toolMessages, _ := deepSeek.HandleToolCall(responseMessage.ToolCalls())
+
+		messages = append(messages, toolMessages...)
 	}
-	fmt.Println()
-	fmt.Println("Tool Calls:")
-	for id, tool := range toolCalls {
-		fmt.Printf("(%d: %s) %s: %s\n\n", id, tool.ID, tool.Name, tool.Args)
-	}
-	fmt.Println("========================================")
-	fmt.Println()
 }
 
-func llmInterfaceCall(llmservice llmservice.LLMService, messages []llmservice.RequestMessage, args ...llmservice.Option) (chan llmservice.ResponseMessage, error) {
+func llmInterfaceCall(llmservice llmservice.LLMService, messages []llmservice.LLMMessage, args ...llmservice.Option) (chan llmservice.LLMMessage, error) {
 	return llmservice.SendMessage(messages, args...)
 }

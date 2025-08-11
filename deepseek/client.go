@@ -69,13 +69,13 @@ func (ds *DeepSeekAIService) ServiceTokenLimit() int {
 }
 
 func (ds *DeepSeekAIService) SendMessage(
-	messages []llmservice.RequestMessage,
+	messages []llmservice.LLMMessage,
 	options ...llmservice.Option,
-) (chan llmservice.ResponseMessage, error) {
+) (chan llmservice.LLMMessage, error) {
 
 	const requestURL string = baseURL + "/chat/completions"
 
-	returnChan := make(chan llmservice.ResponseMessage)
+	returnChan := make(chan llmservice.LLMMessage)
 	dsOptions := DeepSeekOptions{NewDeepSeekChatModel(), nil, nil, nil, nil, nil, nil, nil, nil}
 
 	for _, option := range options {
@@ -106,19 +106,23 @@ func (ds *DeepSeekAIService) SendMessage(
 		mcpResources += fmt.Sprintf("MCP[%d] Resources: %s", i, conn.resources)
 	}
 
-	requestMessages := make([]deepSeekRequestMessage, len(messages))
+	requestMessages := make([]DeepSeekMessage, len(messages))
 
 	for i := range messages {
 
-		messageContent := messages[i].Content()
+		switch messages[i].Role() {
+		case string(llmservice.SenderRoleSystem):
+			messageContent := messages[i].MessageContent()
 
-		if messages[i].Role() == string(llmservice.SenderRoleSystem) && mcpResources != "" {
-			messageContent += fmt.Sprintf("\n\n Available MCP resources: %s", mcpResources)
-		}
+			if messages[i].Role() == string(llmservice.SenderRoleSystem) && mcpResources != "" {
+				messageContent += fmt.Sprintf("\n\n Available MCP resources: %s", mcpResources)
+			}
 
-		requestMessages[i] = deepSeekRequestMessage{
-			RoleString:    string(messages[i].Role()),
-			ContentString: messageContent,
+			requestMessages[i] = *NewMessage(messages[i].Role(), messageContent, messages[i].ToolCalls())
+		case string(SenderRoleTool):
+			requestMessages[i] = *NewToolCallResponse(messages[i].MessageContent(), messages[i].ToolCallID())
+		default:
+			requestMessages[i] = *NewMessage(messages[i].Role(), messages[i].MessageContent(), messages[i].ToolCalls())
 		}
 	}
 
@@ -187,7 +191,7 @@ func (ds *DeepSeekAIService) SendMessage(
 
 	ds.log.Debugf("DeepSeek response Status: %s\n", resp.Status)
 
-	go func(ds *DeepSeekAIService, readCloser io.ReadCloser, outputChan chan<- llmservice.ResponseMessage) {
+	go func(ds *DeepSeekAIService, readCloser io.ReadCloser, outputChan chan<- llmservice.LLMMessage) {
 		err := ds.handleResponse(readCloser, outputChan)
 		if err != nil {
 			ds.log.Errorf("Error handling DeepSeek response: %s", err.Error())
@@ -197,31 +201,20 @@ func (ds *DeepSeekAIService) SendMessage(
 	return returnChan, nil
 }
 
-func (ds *DeepSeekAIService) HandleToolCall(toolCalls []llmservice.MessageToolCall) ([]llmservice.RequestMessage, error) {
+func (ds *DeepSeekAIService) HandleToolCall(toolCalls []llmservice.MessageToolCall) ([]llmservice.LLMMessage, error) {
 
-	messages := make([]llmservice.RequestMessage, len(toolCalls))
+	messages := make([]llmservice.LLMMessage, len(toolCalls))
 
 	for i, toolCall := range toolCalls {
 
 		if toolCall.ToolName() == ResourceCallTool().Function.Name {
 
-			jsonData, err := json.Marshal(toolCall.Args())
-			if err != nil {
-				messages[i] = NewMessage(
-					string(SenderRoleTool),
-					fmt.Sprintf("Failed to marshal arguments string. Error: %s", err.Error()),
-					nil,
-				)
-				continue
-			}
-
 			var resourceCall ResourceCall
-			err = json.Unmarshal(jsonData, &resourceCall)
+			err := json.Unmarshal([]byte(toolCall.Args()), &resourceCall)
 			if err != nil {
-				messages[i] = NewMessage(
-					string(SenderRoleTool),
+				messages[i] = NewToolCallResponse(
 					fmt.Sprintf("Incorrect argument json. Expected {mcp_id: <Int>, uri: <String>}; Got: %s, err: %s", toolCall.Args(), err.Error()),
-					nil,
+					toolCall.ID(),
 				)
 				continue
 			}
@@ -239,10 +232,9 @@ func (ds *DeepSeekAIService) HandleToolCall(toolCalls []llmservice.MessageToolCa
 			result, err := ds.mcpConnections[resourceCall.McpIndex].client.ReadResource(ds.ctx, resourceReadReq)
 
 			if err != nil {
-				messages[i] = NewMessage(
-					string(SenderRoleTool),
+				messages[i] = NewToolCallResponse(
 					fmt.Sprintf("MCP Resource read failed with error: %s", err.Error()),
-					nil,
+					toolCall.ID(),
 				)
 				continue
 			}
@@ -258,23 +250,20 @@ func (ds *DeepSeekAIService) HandleToolCall(toolCalls []llmservice.MessageToolCa
 				}
 			}
 
-			messages[i] = NewMessage(
-				string(SenderRoleTool),
+			messages[i] = NewToolCallResponse(
 				textData,
-				nil,
+				toolCall.ID(),
 			)
 
 			continue
 		}
-
-		
 
 	}
 
 	return messages, nil
 }
 
-func (ds *DeepSeekAIService) handleResponse(readCloser io.ReadCloser, outputChan chan<- llmservice.ResponseMessage) error {
+func (ds *DeepSeekAIService) handleResponse(readCloser io.ReadCloser, outputChan chan<- llmservice.LLMMessage) error {
 	defer close(outputChan)
 	scanner := bufio.NewScanner(readCloser)
 
@@ -309,7 +298,11 @@ func (ds *DeepSeekAIService) handleResponse(readCloser io.ReadCloser, outputChan
 					fmt.Printf("Delta finish Reason: %s\n", *choice.FinishReason)
 				}
 
-				outputChan <- *choice.Delta
+				delta := choice.Delta
+
+				delta.StopReasonString = choice.FinishReason
+
+				outputChan <- delta
 			}
 
 			if choice.Message != nil {
@@ -317,7 +310,10 @@ func (ds *DeepSeekAIService) handleResponse(readCloser io.ReadCloser, outputChan
 					fmt.Printf("Message finish Reason: %s\n", *choice.FinishReason)
 				}
 
-				outputChan <- *choice.Message
+				message := choice.Message
+				message.StopReasonString = choice.FinishReason
+
+				outputChan <- message
 			}
 		}
 	}
