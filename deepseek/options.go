@@ -2,6 +2,7 @@ package deepseek
 
 import (
 	"github.com/TitanLombard/llmservice/internal/helpers"
+	"github.com/mark3labs/mcp-go/client"
 )
 
 // MARK: - Concrete options
@@ -9,12 +10,12 @@ import (
 type DeepSeekOptions struct {
 	model          DeepSeekModel
 	streamed       *bool
-	responseFormat *DeepSeekResponseFormat
+	responseFormat *string
 	maxTokens      *int
 	temperature    *float32
 	topP           *float32
 	logprobs       *bool
-	tools          *[]ToolDefinition
+	tools          *[]DeepSeekToolDefinition
 	toolChoice     *string
 }
 
@@ -74,15 +75,15 @@ func WithStreamed(isStreamed bool) *DeepSeekOptionStreamed {
 
 // MARK - ResponseFormat option setters
 
-type DeepSeekResponseFormat string
+type DeepSeekResponseFormatType string
 
 const (
-	ResponceFormatText DeepSeekResponseFormat = "text"
-	ResponceFormatJson DeepSeekResponseFormat = "json_object"
+	ResponceFormatText DeepSeekResponseFormatType = "text"
+	ResponceFormatJson DeepSeekResponseFormatType = "json_object"
 )
 
 type DeepSeekOptionResponseFormat struct {
-	responseFormat DeepSeekResponseFormat
+	responseFormat string
 }
 
 func (opt DeepSeekOptionResponseFormat) applyFunc(dsOpt *DeepSeekOptions) {
@@ -105,8 +106,8 @@ func (o *DeepSeekOptionResponseFormat) Apply(option interface{}) error {
 	return nil
 }
 
-func WithResponceFormat(responseFormat DeepSeekResponseFormat) *DeepSeekOptionResponseFormat {
-	return &DeepSeekOptionResponseFormat{responseFormat: responseFormat}
+func WithResponceFormat(responseFormat DeepSeekResponseFormatType) *DeepSeekOptionResponseFormat {
+	return &DeepSeekOptionResponseFormat{responseFormat: string(responseFormat)}
 }
 
 // MARK - MaxTokens option setters
@@ -208,7 +209,7 @@ func WithLogprobs(logprobs bool) *DeepSeekOptionLogprobs {
 // MARK - Tools option setters
 
 type DeepSeekOptionTools struct {
-	tools []ToolDefinition
+	tools []DeepSeekToolDefinition
 }
 
 func (opt DeepSeekOptionTools) applyFunc(dsOpt *DeepSeekOptions) {
@@ -225,7 +226,7 @@ func (o *DeepSeekOptionTools) Apply(option interface{}) error {
 	return nil
 }
 
-func WithTools(tools []ToolDefinition) *DeepSeekOptionTools {
+func WithTools(tools []DeepSeekToolDefinition) *DeepSeekOptionTools {
 	return &DeepSeekOptionTools{tools: tools}
 }
 
@@ -251,6 +252,19 @@ func (o *DeepSeekOptionToolChoice) Apply(option interface{}) error {
 
 func WithToolChoice(toolChoice string) *DeepSeekOptionToolChoice {
 	return &DeepSeekOptionToolChoice{toolChoice: toolChoice}
+}
+
+type MCPConnection struct {
+	client *client.Client
+
+	resources string
+}
+
+func WithSSEMCP(sseEndpoint string) (MCPConnection, error) {
+
+	sse, err := client.NewSSEMCPClient(sseEndpoint)
+
+	return MCPConnection{client: sse}, err
 }
 
 func isValidOptionType(opt DeepSeekOption) bool {

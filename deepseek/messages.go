@@ -19,12 +19,12 @@ var (
 
 // RequestMessage represents a domain concept of a message in an AI conversation
 type RequestMessage struct {
-	role    llmservice.SenderRole
+	role    string
 	content string
 }
 
 // NewRequestMessage creates a new validated message with domain invariants
-func NewMessage(role llmservice.SenderRole, content string) (*RequestMessage, error) {
+func NewMessage(role string, content string) (*RequestMessage, error) {
 
 	if content == "" {
 		return nil, ErrEmptyContent
@@ -37,7 +37,7 @@ func NewMessage(role llmservice.SenderRole, content string) (*RequestMessage, er
 }
 
 // Role returns the message role (immutable)
-func (m RequestMessage) Role() llmservice.SenderRole {
+func (m RequestMessage) Role() string {
 	return m.role
 }
 

@@ -27,7 +27,7 @@ func (m DeepSeekChatModelType) ContextTokenSize() int {
 
 type DeepSeekResonerModelType struct{}
 
-func NewDeepSeekResonerModel() DeepSeekResonerModelType {
+func NewDeepSeekReasonerModel() DeepSeekResonerModelType {
 	return DeepSeekResonerModelType{}
 }
 

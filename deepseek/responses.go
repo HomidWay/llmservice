@@ -1,50 +1,89 @@
 package deepseek
 
-import "github.com/TitanLombard/llmservice"
+import (
+	"github.com/TitanLombard/llmservice"
+	"github.com/pkoukk/tiktoken-go"
+)
 
 // MARK: - Request structs
 
-type networkRequest struct {
-	Model          string                  `json:"model"`
-	Messages       []networkRequestMessage `json:"messages"`
-	Streamed       *bool                   `json:"stream,omitempty"`
-	ResponseFormat *networkResponseFormat  `json:"response_format,omitempty"`
-	MaxTokens      *int                    `json:"max_tokens,omitempty"`
-	Temperature    *float32                `json:"temperature,omitempty"`
-	TopP           *float32                `json:"top_p,omitempty"`
-	Logprobs       *bool                   `json:"logprobs,omitempty"`
-	Tools          *[]ToolDefinition       `json:"tools,omitempty"`
-	ToolChoice     *string                 `json:"tool_choice,omitempty"`
+type DeepSeekCompletionCall struct {
+	Model          string                    `json:"model"`
+	Messages       []deepSeekRequestMessage  `json:"messages"`
+	Streamed       *bool                     `json:"stream,omitempty"`
+	ResponseFormat *DeepSeekResponseFormat   `json:"response_format,omitempty"`
+	MaxTokens      *int                      `json:"max_tokens,omitempty"`
+	Temperature    *float32                  `json:"temperature,omitempty"`
+	TopP           *float32                  `json:"top_p,omitempty"`
+	Logprobs       *bool                     `json:"logprobs,omitempty"`
+	Tools          *[]DeepSeekToolDefinition `json:"tools,omitempty"`
+	ToolChoice     *string                   `json:"tool_choice,omitempty"`
 }
 
-type networkRequestMessage struct {
-	Role    string  `json:"role"`
-	ToolID  *string `json:"tool_call_id,omitempty"`
-	Content string  `json:"content"`
+type deepSeekRequestMessage struct {
+	ContentString          string                      `json:"content,omitempty"`
+	ReasoningContentString *string                     `json:"reasoning_content,omitempty"`
+	ToolCallsArr           *[]DeepSeekToolCallResponse `json:"tool_calls,omitempty"`
+	RoleString             string                      `json:"role"`
 }
 
-type networkResponseFormat struct {
+func (msg deepSeekRequestMessage) Role() string {
+	return msg.RoleString
+}
+
+func (msg deepSeekRequestMessage) MessageContent() string {
+	return msg.ContentString
+}
+
+func (msg deepSeekRequestMessage) ReasoningContent() *string {
+	return msg.ReasoningContentString
+}
+
+func (msg deepSeekRequestMessage) ToolCalls() []llmservice.MessageToolCall {
+
+	if msg.ToolCallsArr == nil {
+		return nil
+	}
+
+	toolCalls := make([]llmservice.MessageToolCall, len(*msg.ToolCallsArr))
+
+	for i, toolCall := range *msg.ToolCallsArr {
+		toolCalls[i] = toolCall
+	}
+
+	return toolCalls
+}
+
+func (msg deepSeekRequestMessage) TokenCount() int {
+	tokenizer, err := tiktoken.GetEncoding("cl100k_base")
+	if err != nil {
+		return 0
+	}
+	return len(tokenizer.Encode(msg.MessageContent(), nil, nil))
+}
+
+type DeepSeekResponseFormat struct {
 	Type string `json:"type"`
 }
 
-type ToolDefinition struct {
-	Type     string       `json:"type"`
-	Function ToolFunction `json:"function"`
+type DeepSeekToolDefinition struct {
+	Type     string               `json:"type"`
+	Function DeepSeekToolFunction `json:"function"`
 }
 
-type ToolFunction struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Parameters  ToolParameters `json:"parameters"`
+type DeepSeekToolFunction struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Parameters  DeepSeekToolParameters `json:"parameters"`
 }
 
-type ToolParameters struct {
-	Type       string                  `json:"type"`
-	Properties map[string]ToolProperty `json:"properties"`
-	Required   []string                `json:"required,omitempty"`
+type DeepSeekToolParameters struct {
+	Type       string                          `json:"type"`
+	Properties map[string]DeepSeekToolProperty `json:"properties"`
+	Required   []string                        `json:"required,omitempty"`
 }
 
-type ToolProperty struct {
+type DeepSeekToolProperty struct {
 	Type        string `json:"type"`
 	Description string `json:"description"`
 }
@@ -52,21 +91,21 @@ type ToolProperty struct {
 // MARK: - Response structs
 
 type networkResponse struct {
-	ID                string                  `json:"id"`
-	Object            string                  `json:"object"`
-	Created           int                     `json:"created"`
-	Model             string                  `json:"model"`
-	Choices           []networkResponseChoice `json:"choices"`
-	Usage             *networkResponseUsage   `json:"usage,omitempty"`
-	SystemFingerprint string                  `json:"system_fingerprint"`
+	ID                string                `json:"id"`
+	Object            string                `json:"object"`
+	Created           int                   `json:"created"`
+	Model             string                `json:"model"`
+	Choices           []deepSeekChoice      `json:"choices"`
+	Usage             *networkResponseUsage `json:"usage,omitempty"`
+	SystemFingerprint string                `json:"system_fingerprint"`
 }
 
-type networkResponseChoice struct {
-	Index        int                      `json:"index"`
-	Message      *networkResponseMessage  `json:"message,omitempty"`
-	Delta        *networkResponseMessage  `json:"delta,omitempty"`
-	FinishReason *string                  `json:"finish_reason,omitempty"`
-	Logprobs     *networkResponseLogprobs `json:"logprobs"`
+type deepSeekChoice struct {
+	Index        int                     `json:"index"`
+	Message      *deepSeekRequestMessage `json:"message,omitempty"`
+	Delta        *deepSeekRequestMessage `json:"delta,omitempty"`
+	FinishReason *string                 `json:"finish_reason"`
+	Logprobes    networkResponseLogprobs `json:"logprobes,omitempty"`
 }
 
 type networkResponseLogprobs struct {
@@ -84,19 +123,39 @@ type networkResponseLogprobe struct {
 	Bytes []int   `json:"bytes"`
 }
 
-type networkResponseMessage struct {
-	Content          string                     `json:"content"`
-	ReasoningContent *string                    `json:"reasoning_content,omitempty"`
-	FinishReason     *string                    `json:"finish_reason,omitempty"`
-	ToolCalls        *[]networkResponseToolCall `json:"tool_calls,omitempty"`
-	Role             llmservice.SenderRole      `json:"role"`
-}
-
-type networkResponseToolCall struct {
-	Index    int                     `json:"index"`
-	ID       string                  `json:"id"`
+type DeepSeekToolCallResponse struct {
+	IndexVal int                     `json:"index"`
+	IDString string                  `json:"id"`
 	Type     string                  `json:"type"`
 	Function networkResponseFunction `json:"function"`
+}
+
+// Args implements llmservice.MessageToolCall.
+func (d DeepSeekToolCallResponse) Args() string {
+	return d.Function.Arguments
+}
+
+// ToolName implements llmservice.MessageToolCall.
+func (d DeepSeekToolCallResponse) ToolName() string {
+	return d.Function.Name
+}
+
+// ID implements llmservice.MessageToolCall.
+func (d DeepSeekToolCallResponse) ID() string {
+	return d.IDString
+}
+
+func (d DeepSeekToolCallResponse) Index() int {
+	return d.IndexVal
+}
+
+// ToolCall implements llmservice.MessageToolCall.
+func (d DeepSeekToolCallResponse) ToolCall() map[string]interface{} {
+
+	toolCalls := make(map[string]interface{})
+
+	toolCalls[d.Function.Name] = d.Function.Arguments
+	return toolCalls
 }
 
 type networkResponseFunction struct {

@@ -19,7 +19,7 @@ var apiKeyFlag = flag.String("apikey", "", "DeepSeekApi key")
 
 const (
 	sysMessageContent  = "This is a test for MCP client."
-	userMessageContent = "Напиши короткую сводку данных о сотруднике с ID 5560 с его показателями за неделю за неделю"
+	userMessageContent = "Напиши привет, а после вызови MCP и напиши короткую сводку данных о сотруднике с ID 5560 с его показателями за неделю за неделю, "
 )
 
 func TestDebugMCPServerEndpoints(t *testing.T) {
@@ -90,8 +90,8 @@ func TestSendMessage_streamed(t *testing.T) {
 		t.FailNow()
 	}
 
-	sysMessage, _ := deepseek.NewMessage(llmservice.SenderRoleSystem, sysMessageContent)
-	usrMessage, _ := deepseek.NewMessage(llmservice.SenderRoleUser, userMessageContent)
+	sysMessage, _ := deepseek.NewMessage(string(llmservice.SenderRoleSystem), sysMessageContent)
+	usrMessage, _ := deepseek.NewMessage(string(llmservice.SenderRoleUser), userMessageContent)
 
 	messages := []llmservice.RequestMessage{
 		*sysMessage,
@@ -103,7 +103,7 @@ func TestSendMessage_streamed(t *testing.T) {
 		messages,
 		deepseek.WithModel(deepseek.NewDeepSeekChatModel()),
 		deepseek.WithStreamed(true),
-		deepseek.WithTools([]deepseek.ToolDefinition{deepseek.ResourceCallTool()}),
+		deepseek.WithTools([]deepseek.DeepSeekToolDefinition{deepseek.ResourceCallTool()}),
 	)
 
 	var invalidOption *helpers.InvalidOptionError
@@ -116,15 +116,43 @@ func TestSendMessage_streamed(t *testing.T) {
 		t.FailNow()
 	}
 
+	type ToolCall struct {
+		ID   string
+		Name string
+		Args string
+	}
+
+	toolCalls := make(map[int]ToolCall, 0)
 	fmt.Println("============ RESPONSE ==================")
 	for line := range returnChan {
-		fmt.Print(line)
+		fmt.Print(line.MessageContent())
+
+		for _, call := range line.ToolCalls() {
+			var toolCall ToolCall
+			var ok bool
+
+			if toolCall, ok = toolCalls[call.Index()]; !ok {
+				toolCall = ToolCall{Name: "", Args: ""}
+			}
+
+			if toolCall.ID == "" {
+				toolCall.ID = call.ID()
+			}
+
+			toolCall.Name += call.ToolName()
+			toolCall.Args += call.Args()
+			toolCalls[call.Index()] = toolCall
+		}
 	}
 	fmt.Println()
+	fmt.Println("Tool Calls:")
+	for id, tool := range toolCalls {
+		fmt.Printf("(%d: %s) %s: %s\n\n", id, tool.ID, tool.Name, tool.Args)
+	}
 	fmt.Println("========================================")
 	fmt.Println()
 }
 
-func llmInterfaceCall(llmservice llmservice.LLMService, messages []llmservice.RequestMessage, args ...llmservice.Option) (chan string, error) {
+func llmInterfaceCall(llmservice llmservice.LLMService, messages []llmservice.RequestMessage, args ...llmservice.Option) (chan llmservice.ResponseMessage, error) {
 	return llmservice.SendMessage(messages, args...)
 }

@@ -13,14 +13,16 @@ import (
 	"github.com/TitanLombard/llmservice"
 	"github.com/TitanLombard/llmservice/internal/helpers"
 	"github.com/TitanLombard/logger"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 const baseURL = "https://api.deepseek.com/"
 
 type DeepSeekAIService struct {
-	apikey string
-	ctx    context.Context
-	log    logger.Logger
+	apikey         string
+	ctx            context.Context
+	log            logger.Logger
+	mcpConnections []MCPConnection
 }
 
 func NewDeepSeekService(apikey string, ctx context.Context, log logger.Logger) *DeepSeekAIService {
@@ -32,6 +34,36 @@ func NewDeepSeekService(apikey string, ctx context.Context, log logger.Logger) *
 	return &DeepSeekAIService{apikey: apikey, ctx: ctx, log: log}
 }
 
+func NewDeepSeekServiceWithMCP(apikey string, ctx context.Context, log logger.Logger, mcpConnections ...MCPConnection) (*DeepSeekAIService, error) {
+
+	if log == nil {
+		log = logger.Default(logger.VerbosityInfo, nil)
+	}
+
+	var initiatedConnections []MCPConnection
+
+	for _, connection := range mcpConnections {
+		err := connection.client.Start(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = connection.client.Initialize(ctx, mcp.InitializeRequest{})
+		if err != nil {
+			return nil, err
+		}
+
+		connection.resources, err = extractResources(connection)
+		if err != nil {
+			return nil, err
+		}
+
+		initiatedConnections = append(initiatedConnections, connection)
+	}
+
+	return &DeepSeekAIService{apikey: apikey, ctx: ctx, log: log, mcpConnections: initiatedConnections}, nil
+}
+
 func (ds *DeepSeekAIService) ServiceTokenLimit() int {
 	return 64000
 }
@@ -39,11 +71,11 @@ func (ds *DeepSeekAIService) ServiceTokenLimit() int {
 func (ds *DeepSeekAIService) SendMessage(
 	messages []llmservice.RequestMessage,
 	options ...llmservice.Option,
-) (chan string, error) {
+) (chan llmservice.ResponseMessage, error) {
 
-	const requestURL string = baseURL + "chat/completions"
+	const requestURL string = baseURL + "/chat/completions"
 
-	returnChan := make(chan string)
+	returnChan := make(chan llmservice.ResponseMessage)
 	dsOptions := DeepSeekOptions{NewDeepSeekChatModel(), nil, nil, nil, nil, nil, nil, nil, nil}
 
 	for _, option := range options {
@@ -57,27 +89,45 @@ func (ds *DeepSeekAIService) SendMessage(
 		}
 	}
 
-	ds.log.Debugf("Options: \n%v", dsOptions)
+	ds.debugPrint(dsOptions)
 
 	if len(messages) == 0 {
 		return returnChan, deepSeekNoMessagesError{}
 	}
 
-	requestMessages := make([]networkRequestMessage, len(messages))
+	mcpResources := ""
+
+	for i, conn := range ds.mcpConnections {
+
+		if i > 0 {
+			mcpResources += "\n"
+		}
+
+		mcpResources += fmt.Sprintf("MCP[%d] Resources: %s", i, conn.resources)
+	}
+
+	requestMessages := make([]deepSeekRequestMessage, len(messages))
 
 	for i := range messages {
-		requestMessages[i] = networkRequestMessage{
-			Role:    string(messages[i].Role()),
-			Content: messages[i].Content(),
+
+		messageContent := messages[i].Content()
+
+		if messages[i].Role() == string(llmservice.SenderRoleSystem) && mcpResources != "" {
+			messageContent += fmt.Sprintf("\n\n Available MCP resources: %s", mcpResources)
+		}
+
+		requestMessages[i] = deepSeekRequestMessage{
+			RoleString:    string(messages[i].Role()),
+			ContentString: messageContent,
 		}
 	}
 
-	var responseFormat *networkResponseFormat
+	var responseFormat *DeepSeekResponseFormat
 	if dsOptions.responseFormat != nil {
-		responseFormat = &networkResponseFormat{string(*dsOptions.responseFormat)}
+		responseFormat = &DeepSeekResponseFormat{string(*dsOptions.responseFormat)}
 	}
 
-	request := networkRequest{
+	request := DeepSeekCompletionCall{
 		Model:          string(dsOptions.model.Model()),
 		Messages:       requestMessages,
 		Streamed:       dsOptions.streamed,
@@ -91,16 +141,16 @@ func (ds *DeepSeekAIService) SendMessage(
 	}
 
 	requestBody, err := json.Marshal(request)
-
 	if err != nil {
-		return returnChan, err
+		return returnChan, fmt.Errorf("error marshalling request: %s", err)
 	}
 
-	ds.log.Debugf("DeepSeek request created")
+	ds.log.Infof("DeepSeek request created")
+	ds.log.Debugf("%s", string(requestBody))
 
 	req, err := http.NewRequestWithContext(ds.ctx, "POST", requestURL, bytes.NewBuffer(requestBody))
 	if err != nil {
-		return returnChan, err
+		return returnChan, fmt.Errorf("Error creating HTTP request: %s", err)
 	}
 
 	authHeadervalue := "Bearer " + ds.apikey
@@ -113,12 +163,8 @@ func (ds *DeepSeekAIService) SendMessage(
 	ds.log.Debugf("DeepSeek request sent")
 	resp, err := client.Do(req)
 	if err != nil {
-		return returnChan, err
+		return returnChan, fmt.Errorf("Error sending HTTP request: %s", err)
 	}
-
-	go func(resp *http.Response, returnChan chan string) {
-		ds.handleResponse(resp, returnChan)
-	}(resp, returnChan)
 
 	ds.log.Debugf("DeepSeek responce recieved")
 
@@ -135,23 +181,33 @@ func (ds *DeepSeekAIService) SendMessage(
 			dsErr.ErrorBody = &responseErr
 		}
 
-		return returnChan, dsErr
+		ds.log.Debugf("HTML Body:\n%s", string(rawBody))
+		return returnChan, fmt.Errorf("Error sending HTTP request: %s", dsErr)
 	}
 
-	ds.log.Debugf("DeepSeek rsponse Status: %s\n", resp.Status)
+	ds.log.Debugf("DeepSeek response Status: %s\n", resp.Status)
+
+	go func(ds *DeepSeekAIService, readCloser io.ReadCloser, outputChan chan<- llmservice.ResponseMessage) {
+		err := ds.handleResponse(readCloser, outputChan)
+		if err != nil {
+			ds.log.Errorf("Error handling DeepSeek response: %s", err.Error())
+		}
+	}(ds, resp.Body, returnChan)
+
 	return returnChan, nil
 }
 
-func (ds *DeepSeekAIService) handleResponse(resp *http.Response, outputChan chan<- string) {
+func (ds *DeepSeekAIService) handleResponse(readCloser io.ReadCloser, outputChan chan<- llmservice.ResponseMessage) error {
 	defer close(outputChan)
-	defer resp.Body.Close()
+	scanner := bufio.NewScanner(readCloser)
 
-	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
+
+		bodyText := scanner.Text()
 
 		var chunk networkResponse
 
-		data := strings.TrimPrefix(scanner.Text(), "data: ")
+		data := strings.TrimPrefix(bodyText, "data: ")
 
 		if data == "[DONE]" {
 			break
@@ -161,19 +217,102 @@ func (ds *DeepSeekAIService) handleResponse(resp *http.Response, outputChan chan
 
 		err := decoder.Decode(&chunk)
 		if err != nil && err != io.EOF {
-			ds.log.Errorf("DeepSeek response chunk decode error: %s\n", err.Error())
-			continue
+			ds.log.Debugf("DeepSeek response chunk data: %s\n", data)
+			return fmt.Errorf("deepseek response chunk decode error: %s", err.Error())
 		}
 
 		for _, choice := range chunk.Choices {
 
+			if choice.Delta == nil && choice.Message == nil {
+				return fmt.Errorf("no messages found in the request")
+			}
+
 			if choice.Delta != nil {
-				outputChan <- choice.Delta.Content
+				if choice.FinishReason != nil {
+					fmt.Printf("Delta finish Reason: %s\n", *choice.FinishReason)
+				}
+
+				outputChan <- *choice.Delta
 			}
 
 			if choice.Message != nil {
-				outputChan <- choice.Message.Content
+				if choice.FinishReason != nil {
+					fmt.Printf("Message finish Reason: %s\n", *choice.FinishReason)
+				}
+
+				outputChan <- *choice.Message
 			}
 		}
 	}
+
+	return nil
+}
+
+func (ds DeepSeekAIService) debugPrint(dsOptions DeepSeekOptions) {
+	ds.log.Debugf("Options Details:")
+	ds.log.Debugf("- Model: %v", dsOptions.model)
+	if dsOptions.responseFormat != nil {
+		ds.log.Debugf("- ResponseFormat: %v", *dsOptions.responseFormat)
+	} else {
+		ds.log.Debugf("- ResponseFormat: nil")
+	}
+	ds.log.Debugf("- Streamed: %v", dsOptions.streamed)
+	ds.log.Debugf("- MaxTokens: %v", dsOptions.maxTokens)
+	ds.log.Debugf("- Temperature: %v", dsOptions.temperature)
+	ds.log.Debugf("- TopP: %v", dsOptions.topP)
+	ds.log.Debugf("- Logprobs: %v", dsOptions.logprobs)
+	if dsOptions.tools != nil {
+		toolsJson, _ := json.Marshal(dsOptions.tools)
+		ds.log.Debugf("- Tools: %s", string(toolsJson))
+	} else {
+		ds.log.Debugf("- Tools: nil")
+	}
+	ds.log.Debugf("- ToolChoice: %v", dsOptions.toolChoice)
+}
+
+func extractResources(mcpConnection MCPConnection) (string, error) {
+
+	stringBuilder := strings.Builder{}
+
+	resources, err := mcpConnection.client.ListResources(context.Background(), mcp.ListResourcesRequest{})
+	if err != nil {
+		return "", fmt.Errorf("failed to list resources: %s", err.Error())
+	}
+
+	resourceTemplates, err := mcpConnection.client.ListResourceTemplates(context.Background(), mcp.ListResourceTemplatesRequest{})
+	if err != nil {
+		return "", fmt.Errorf("failed to list resource templates: %s", err.Error())
+	}
+
+	if len(resources.Resources) > 0 {
+		stringBuilder.WriteString("Resources:\n")
+		for i, resource := range resources.Resources {
+			if i > 0 {
+				stringBuilder.WriteString("\n")
+			}
+			jsonString, err := json.Marshal(resource)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal resource: %s", err.Error())
+			}
+
+			stringBuilder.WriteString(string(jsonString))
+		}
+	}
+
+	if len(resourceTemplates.ResourceTemplates) > 0 {
+		stringBuilder.WriteString("ResourceTemplates:\n")
+		for i, networkResponse := range resourceTemplates.ResourceTemplates {
+			if i > 0 {
+				stringBuilder.WriteString("\n")
+			}
+			jsonString, err := json.Marshal(networkResponse)
+			if err != nil {
+				return "", fmt.Errorf("failed to marshal resource template: %s", err.Error())
+			}
+
+			stringBuilder.WriteString(string(jsonString))
+		}
+	}
+
+	return stringBuilder.String(), nil
 }

@@ -8,14 +8,29 @@ const (
 	SenderRoleAssistant SenderRole = "assistant"
 )
 
-// RequestMessage represents a domain concept of a message in an AI conversation
 type RequestMessage interface {
-	Role() SenderRole
+	Role() string
 	Content() string
 	TokenCount() int
 }
 
+// ResponseMessage represents a domain concept of a message in an AI conversation
+type ResponseMessage interface {
+	Role() string
+	ReasoningContent() *string
+	MessageContent() string
+	ToolCalls() []MessageToolCall
+	TokenCount() int
+}
+
+type MessageToolCall interface {
+	Index() int
+	ID() string
+	ToolName() string
+	Args() string
+}
+
 type LLMService interface {
-	SendMessage([]RequestMessage, ...Option) (chan string, error)
+	SendMessage([]RequestMessage, ...Option) (chan ResponseMessage, error)
 	ServiceTokenLimit() int
 }
