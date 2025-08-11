@@ -11,6 +11,7 @@ const (
 type RequestMessage interface {
 	Role() string
 	Content() string
+	ToolCalls() []MessageToolCall
 	TokenCount() int
 }
 
@@ -33,4 +34,9 @@ type MessageToolCall interface {
 type LLMService interface {
 	SendMessage([]RequestMessage, ...Option) (chan ResponseMessage, error)
 	ServiceTokenLimit() int
+}
+
+type LLMServiceMCP interface {
+	LLMService
+	HandleToolCall([]MessageToolCall) (RequestMessage, error)
 }

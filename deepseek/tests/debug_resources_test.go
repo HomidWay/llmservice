@@ -90,8 +90,8 @@ func TestSendMessage_streamed(t *testing.T) {
 		t.FailNow()
 	}
 
-	sysMessage, _ := deepseek.NewMessage(string(llmservice.SenderRoleSystem), sysMessageContent)
-	usrMessage, _ := deepseek.NewMessage(string(llmservice.SenderRoleUser), userMessageContent)
+	sysMessage, _ := deepseek.NewMessage(string(llmservice.SenderRoleSystem), sysMessageContent, nil)
+	usrMessage, _ := deepseek.NewMessage(string(llmservice.SenderRoleUser), userMessageContent, nil)
 
 	messages := []llmservice.RequestMessage{
 		*sysMessage,

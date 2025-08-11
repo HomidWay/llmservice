@@ -19,20 +19,22 @@ var (
 
 // RequestMessage represents a domain concept of a message in an AI conversation
 type RequestMessage struct {
-	role    string
-	content string
+	role      string
+	content   string
+	toolCalls []llmservice.MessageToolCall
 }
 
 // NewRequestMessage creates a new validated message with domain invariants
-func NewMessage(role string, content string) (*RequestMessage, error) {
+func NewMessage(role string, content string, toolCalls []llmservice.MessageToolCall) (*RequestMessage, error) {
 
 	if content == "" {
 		return nil, ErrEmptyContent
 	}
 
 	return &RequestMessage{
-		role:    role,
-		content: strings.TrimSpace(content),
+		role:      role,
+		content:   strings.TrimSpace(content),
+		toolCalls: toolCalls,
 	}, nil
 }
 
@@ -46,6 +48,10 @@ func (m RequestMessage) Content() string {
 	return m.content
 }
 
+func (m RequestMessage) ToolCalls() []llmservice.MessageToolCall {
+	return m.toolCalls
+}
+
 // TokenCount estimates the token count for this message
 func (m RequestMessage) TokenCount() int {
 	tokenizer, err := tiktoken.GetEncoding("cl100k_base")
@@ -56,5 +62,5 @@ func (m RequestMessage) TokenCount() int {
 }
 
 func (m RequestMessage) SetContent(newContent string) (*RequestMessage, error) {
-	return NewMessage(m.role, newContent)
+	return NewMessage(m.role, newContent, m.toolCalls)
 }

@@ -197,6 +197,8 @@ func (ds *DeepSeekAIService) SendMessage(
 	return returnChan, nil
 }
 
+func (ds *DeepSeekAIService) HandleToolCall()
+
 func (ds *DeepSeekAIService) handleResponse(readCloser io.ReadCloser, outputChan chan<- llmservice.ResponseMessage) error {
 	defer close(outputChan)
 	scanner := bufio.NewScanner(readCloser)
