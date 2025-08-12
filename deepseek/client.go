@@ -230,7 +230,6 @@ func (ds *DeepSeekAIService) HandleToolCall(toolCalls []llmservice.MessageToolCa
 			}
 
 			result, err := ds.mcpConnections[resourceCall.McpIndex].client.ReadResource(ds.ctx, resourceReadReq)
-
 			if err != nil {
 				messages[i] = NewToolCallResponse(
 					fmt.Sprintf("MCP Resource read failed with error: %s", err.Error()),
@@ -258,6 +257,7 @@ func (ds *DeepSeekAIService) HandleToolCall(toolCalls []llmservice.MessageToolCa
 			continue
 		}
 
+		messages[i] = NewToolCallResponse(fmt.Sprintf("Unsupported tool: %s", toolCall.ToolName()), toolCall.ID())
 	}
 
 	return messages, nil

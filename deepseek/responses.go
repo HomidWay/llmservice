@@ -102,15 +102,6 @@ func (d DeepSeekToolCall) Index() int {
 	return d.IndexVal
 }
 
-// ToolCall implements llmservice.MessageToolCall.
-func (d DeepSeekToolCall) ToolCall() map[string]interface{} {
-
-	toolCalls := make(map[string]interface{})
-
-	toolCalls[d.Function.Name] = d.Function.Arguments
-	return toolCalls
-}
-
 type networkResponseFunction struct {
 	Name      string `json:"name"`
 	Arguments string `json:"arguments"`
