@@ -9,7 +9,7 @@ func ResourceCallTool() DeepSeekToolDefinition {
 	return DeepSeekToolDefinition{
 		Type: "function",
 		Function: DeepSeekToolFunction{
-			Name:        "uri_resource_call",
+			Name:        "uri_resourse_call",
 			Description: "Calls resource at given URI and returns contents of this call's result",
 			Parameters: DeepSeekToolParameters{
 				Type: "object",

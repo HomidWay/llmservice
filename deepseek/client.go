@@ -206,7 +206,6 @@ func (ds *DeepSeekAIService) HandleToolCall(toolCalls []llmservice.MessageToolCa
 	messages := make([]llmservice.LLMMessage, len(toolCalls))
 
 	for i, toolCall := range toolCalls {
-
 		if toolCall.ToolName() == ResourceCallTool().Function.Name {
 
 			var resourceCall ResourceCall
@@ -255,9 +254,9 @@ func (ds *DeepSeekAIService) HandleToolCall(toolCalls []llmservice.MessageToolCa
 			)
 
 			continue
+		} else {
+			messages[i] = NewToolCallResponse(fmt.Sprintf("Unsupported tool: %s", toolCall.ToolName()), toolCall.ID())
 		}
-
-		messages[i] = NewToolCallResponse(fmt.Sprintf("Unsupported tool: %s", toolCall.ToolName()), toolCall.ID())
 	}
 
 	return messages, nil
