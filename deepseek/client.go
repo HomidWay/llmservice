@@ -270,6 +270,8 @@ func (ds *DeepSeekAIService) handleResponse(readCloser io.ReadCloser, outputChan
 
 		bodyText := scanner.Text()
 
+		ds.log.Debugf("DeepSeek Response:\n%s", bodyText)
+
 		var chunk networkResponse
 
 		data := strings.TrimPrefix(bodyText, "data: ")
