@@ -150,7 +150,7 @@ func (ds *DeepSeekAIService) SendMessage(
 	}
 
 	ds.log.Infof("DeepSeek request created")
-	ds.log.Debugf("%s", string(requestBody))
+	ds.log.Debugf("Request Body: %s", string(requestBody))
 
 	req, err := http.NewRequestWithContext(ds.ctx, "POST", requestURL, bytes.NewBuffer(requestBody))
 	if err != nil {

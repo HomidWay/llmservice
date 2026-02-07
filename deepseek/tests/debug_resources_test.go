@@ -19,7 +19,7 @@ var apiKeyFlag = flag.String("apikey", "", "DeepSeekApi key")
 
 const (
 	sysMessageContent  = "This is a test for MCP client."
-	userMessageContent = "Напиши привет, а после вызови MCP и напиши короткую сводку данных о сотруднике с ID 5560 с его показателями за неделю за неделю, сегодня 11.08.2025"
+	userMessageContent = "Say hi, and check what is the name of user with name Барбарин, then check his shifts, and after that check his fines, do all that in sepparate requests."
 )
 
 func TestDebugMCPServerEndpoints(t *testing.T) {
