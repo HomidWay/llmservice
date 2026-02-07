@@ -10,9 +10,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/TitanLombard/llmservice"
-	"github.com/TitanLombard/llmservice/internal/helpers"
-	"github.com/TitanLombard/logger"
+	"github.com/homidway/llmservice"
+	"github.com/homidway/llmservice/internal/helpers"
+	"github.com/homidway/llmservice/internal/logger"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 

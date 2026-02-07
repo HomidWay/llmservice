@@ -1,7 +1,7 @@
 package deepseek
 
 import (
-	"github.com/TitanLombard/llmservice/internal/helpers"
+	"github.com/homidway/llmservice/internal/helpers"
 	"github.com/mark3labs/mcp-go/client"
 )
 
