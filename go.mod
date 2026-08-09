@@ -1,4 +1,4 @@
-module github.com/homidway/llmservice
+module github.com/HomidWay/llmservice
 
 go 1.24.2
 

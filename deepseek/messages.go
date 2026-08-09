@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/homidway/llmservice"
+	"github.com/HomidWay/llmservice"
 	"github.com/pkoukk/tiktoken-go"
 )
 
