@@ -15,6 +15,8 @@ import (
 	"github.com/HomidWay/llmservice/internal/helpers"
 )
 
+var _ llmservice.LLMService = (*DeepSeekAIService)(nil)
+
 const completionsURL = "https://api.deepseek.com/chat/completions"
 
 type DeepSeekAIService struct {

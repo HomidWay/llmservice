@@ -1,5 +1,7 @@
 package llmservice
 
+import "context"
+
 type SenderRole string
 
 const (
@@ -27,11 +29,5 @@ type MessageToolCall interface {
 }
 
 type LLMService interface {
-	SendMessage([]LLMMessage, ...Option) (chan LLMMessage, error)
-	ServiceTokenLimit() int
-}
-
-type LLMServiceMCP interface {
-	LLMService
-	HandleToolCall([]MessageToolCall) ([]LLMMessage, error)
+	SendMessage(context.Context, []LLMMessage, ...Option) (<-chan LLMMessage, error)
 }
