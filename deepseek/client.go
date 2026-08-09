@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/HomidWay/llmservice"
@@ -31,7 +32,7 @@ func NewDeepSeekServiceWithMCP(apikey string, ctx context.Context, mcpConnection
 
 	var initiatedConnections []MCPConnection
 
-	for _, connection := range mcpConnections {
+	for i, connection := range mcpConnections {
 		err := connection.client.Start(ctx)
 		if err != nil {
 			return nil, err
@@ -43,6 +44,11 @@ func NewDeepSeekServiceWithMCP(apikey string, ctx context.Context, mcpConnection
 		}
 
 		connection.resources, err = extractResources(connection)
+		if err != nil {
+			return nil, err
+		}
+
+		connection.tools, err = extractTools(connection, i)
 		if err != nil {
 			return nil, err
 		}
@@ -118,6 +124,20 @@ func (ds *DeepSeekAIService) SendMessage(
 		responseFormat = &DeepSeekResponseFormat{string(*dsOptions.responseFormat)}
 	}
 
+	// Build MCP tool definitions
+	var allTools []DeepSeekToolDefinition
+	if dsOptions.tools != nil {
+		allTools = append(allTools, *dsOptions.tools...)
+	}
+	for _, conn := range ds.mcpConnections {
+		allTools = append(allTools, conn.tools...)
+	}
+
+	var toolsPtr *[]DeepSeekToolDefinition
+	if len(allTools) > 0 {
+		toolsPtr = &allTools
+	}
+
 	request := DeepSeekCompletionCall{
 		Model:           string(dsOptions.model.Model()),
 		Messages:        requestMessages,
@@ -127,7 +147,7 @@ func (ds *DeepSeekAIService) SendMessage(
 		Temperature:     dsOptions.temperature,
 		TopP:            dsOptions.topP,
 		Logprobs:        dsOptions.logprobs,
-		Tools:           dsOptions.tools,
+		Tools:           toolsPtr,
 		ToolChoice:      dsOptions.toolChoice,
 		Thinking:        dsOptions.thinking,
 		ReasoningEffort: dsOptions.reasoningEffort,
@@ -183,6 +203,55 @@ func (ds *DeepSeekAIService) HandleToolCall(toolCalls []llmservice.MessageToolCa
 	messages := make([]llmservice.LLMMessage, len(toolCalls))
 
 	for i, toolCall := range toolCalls {
+		// Route MCP tool calls (prefixed with mcp_N_)
+		if name, mcpIndex, ok := parseMCPToolName(toolCall.ToolName()); ok {
+			if mcpIndex >= len(ds.mcpConnections) {
+				messages[i] = NewToolCallResponse(
+					fmt.Sprintf("invalid MCP index %d, only %d connections available", mcpIndex, len(ds.mcpConnections)),
+					toolCall.ID(),
+				)
+				continue
+			}
+
+			var args map[string]interface{}
+			if err := json.Unmarshal([]byte(toolCall.Args()), &args); err != nil {
+				messages[i] = NewToolCallResponse(
+					fmt.Sprintf("invalid MCP tool arguments: %s", err.Error()),
+					toolCall.ID(),
+				)
+				continue
+			}
+
+			result, err := ds.mcpConnections[mcpIndex].client.CallTool(ds.ctx, mcp.CallToolRequest{
+				Params: mcp.CallToolParams{
+					Name:      name,
+					Arguments: args,
+				},
+			})
+			if err != nil {
+				messages[i] = NewToolCallResponse(
+					fmt.Sprintf("MCP tool call failed: %s", err.Error()),
+					toolCall.ID(),
+				)
+				continue
+			}
+
+			if result.IsError {
+				textData := extractTextFromContent(result.Content)
+				messages[i] = NewToolCallResponse(
+					fmt.Sprintf("MCP tool returned error: %s", textData),
+					toolCall.ID(),
+				)
+				continue
+			}
+
+			messages[i] = NewToolCallResponse(
+				extractTextFromContent(result.Content),
+				toolCall.ID(),
+			)
+			continue
+		}
+
 		if toolCall.ToolName() == ResourceCallTool().Function.Name {
 
 			var resourceCall ResourceCall
@@ -333,4 +402,81 @@ func extractResources(mcpConnection MCPConnection) (string, error) {
 	}
 
 	return stringBuilder.String(), nil
+}
+
+// extractTools lists tools from an MCP connection and converts them to DeepSeek tool definitions.
+// Each tool name is prefixed with "mcp_{index}_" to enable routing back to the correct connection.
+func extractTools(mcpConnection MCPConnection, index int) ([]DeepSeekToolDefinition, error) {
+	tools, err := mcpConnection.client.ListTools(context.Background(), mcp.ListToolsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tools: %s", err.Error())
+	}
+
+	defs := make([]DeepSeekToolDefinition, len(tools.Tools))
+	for i, tool := range tools.Tools {
+		props := make(map[string]DeepSeekToolProperty, len(tool.InputSchema.Properties))
+		for key, val := range tool.InputSchema.Properties {
+			if propMap, ok := val.(map[string]interface{}); ok {
+				prop := DeepSeekToolProperty{}
+				if t, ok := propMap["type"].(string); ok {
+					prop.Type = t
+				}
+				if d, ok := propMap["description"].(string); ok {
+					prop.Description = d
+				}
+				props[key] = prop
+			}
+		}
+
+		defs[i] = DeepSeekToolDefinition{
+			Type: "function",
+			Function: DeepSeekToolFunction{
+				Name:        fmt.Sprintf("mcp_%d_%s", index, tool.Name),
+				Description: tool.Description,
+				Parameters: DeepSeekToolParameters{
+					Type:       tool.InputSchema.Type,
+					Properties: props,
+					Required:   tool.InputSchema.Required,
+				},
+			},
+		}
+	}
+
+	return defs, nil
+}
+
+// parseMCPToolName extracts the original tool name and connection index from an MCP-prefixed tool name.
+// Expected format: mcp_{index}_{toolName}
+func parseMCPToolName(fullName string) (toolName string, mcpIndex int, ok bool) {
+	const prefix = "mcp_"
+	if !strings.HasPrefix(fullName, prefix) {
+		return "", 0, false
+	}
+
+	rest := fullName[len(prefix):]
+	underscoreIdx := strings.IndexByte(rest, '_')
+	if underscoreIdx < 0 {
+		return "", 0, false
+	}
+
+	index, err := strconv.Atoi(rest[:underscoreIdx])
+	if err != nil {
+		return "", 0, false
+	}
+
+	return rest[underscoreIdx+1:], index, true
+}
+
+// extractTextFromContent reads text from MCP content items.
+func extractTextFromContent(contents []mcp.Content) string {
+	var textData string
+	for _, content := range contents {
+		if textContent, ok := mcp.AsTextContent(content); ok {
+			if textData != "" {
+				textData += "\n"
+			}
+			textData += textContent.Text
+		}
+	}
+	return textData
 }

@@ -310,6 +310,7 @@ type MCPConnection struct {
 	client *client.Client
 
 	resources string
+	tools     []DeepSeekToolDefinition
 }
 
 func WithSSEMCP(sseEndpoint string) (MCPConnection, error) {
