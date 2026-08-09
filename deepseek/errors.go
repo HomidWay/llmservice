@@ -1,17 +1,6 @@
 package deepseek
 
-type deepSeekRequestError struct {
-	Code      int
-	Message   string
-	ErrorBody *networkResponseError
-}
+import "errors"
 
-type deepSeekNoMessagesError struct{}
-
-func (e deepSeekRequestError) Error() string {
-	return e.Message
-}
-
-func (deepSeekNoMessagesError) Error() string {
-	return "No messages found in the request."
-}
+var DeepSeekNoMessagesErr = errors.New("No messages found in the request.")
+var DeepSeekResponseErr = errors.New("DeepSeek returned error instead of response")

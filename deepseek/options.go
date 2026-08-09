@@ -2,7 +2,6 @@ package deepseek
 
 import (
 	"github.com/HomidWay/llmservice/internal/helpers"
-	"github.com/mark3labs/mcp-go/client"
 )
 
 // MARK: - Concrete options
@@ -304,20 +303,6 @@ func (o *DeepSeekOptionToolChoice) Apply(option interface{}) error {
 
 func WithToolChoice(toolChoice string) *DeepSeekOptionToolChoice {
 	return &DeepSeekOptionToolChoice{toolChoice: toolChoice}
-}
-
-type MCPConnection struct {
-	client *client.Client
-
-	resources string
-	tools     []DeepSeekToolDefinition
-}
-
-func WithSSEMCP(sseEndpoint string) (MCPConnection, error) {
-
-	sse, err := client.NewSSEMCPClient(sseEndpoint)
-
-	return MCPConnection{client: sse}, err
 }
 
 func isValidOptionType(opt DeepSeekOption) bool {
