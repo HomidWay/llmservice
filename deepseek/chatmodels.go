@@ -7,34 +7,34 @@ type DeepSeekModel interface {
 	ContextTokenSize() int
 }
 
-// MARK: - Chat model
+// MARK: - V4 Flash model (DeepSeek-V4-Flash-0731)
 
-type DeepSeekChatModelType struct{}
+type DeepSeekV4FlashModel struct{}
 
-func NewDeepSeekChatModel() DeepSeekChatModelType {
-	return DeepSeekChatModelType{}
+func NewDeepSeekV4FlashModel() DeepSeekV4FlashModel {
+	return DeepSeekV4FlashModel{}
 }
 
-func (m DeepSeekChatModelType) Model() string {
-	return "deepseek-chat"
+func (m DeepSeekV4FlashModel) Model() string {
+	return "deepseek-v4-flash"
 }
 
-func (m DeepSeekChatModelType) ContextTokenSize() int {
-	return 64000
+func (m DeepSeekV4FlashModel) ContextTokenSize() int {
+	return 1_000_000
 }
 
-// MARK: - Reasoner model
+// MARK: - V4 Pro model (deepseek-v4-pro)
 
-type DeepSeekResonerModelType struct{}
+type DeepSeekV4ProModel struct{}
 
-func NewDeepSeekReasonerModel() DeepSeekResonerModelType {
-	return DeepSeekResonerModelType{}
+func NewDeepSeekV4ProModel() DeepSeekV4ProModel {
+	return DeepSeekV4ProModel{}
 }
 
-func (m DeepSeekResonerModelType) Model() string {
-	return "deepseek-reasoner"
+func (m DeepSeekV4ProModel) Model() string {
+	return "deepseek-v4-pro"
 }
 
-func (m DeepSeekResonerModelType) ContextTokenSize() int {
-	return 64000
+func (m DeepSeekV4ProModel) ContextTokenSize() int {
+	return 1_000_000
 }

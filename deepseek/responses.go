@@ -3,16 +3,18 @@ package deepseek
 // MARK: - Request structs
 
 type DeepSeekCompletionCall struct {
-	Model          string                    `json:"model"`
-	Messages       []DeepSeekMessage         `json:"messages"`
-	Streamed       *bool                     `json:"stream,omitempty"`
-	ResponseFormat *DeepSeekResponseFormat   `json:"response_format,omitempty"`
-	MaxTokens      *int                      `json:"max_tokens,omitempty"`
-	Temperature    *float32                  `json:"temperature,omitempty"`
-	TopP           *float32                  `json:"top_p,omitempty"`
-	Logprobs       *bool                     `json:"logprobs,omitempty"`
-	Tools          *[]DeepSeekToolDefinition `json:"tools,omitempty"`
-	ToolChoice     *string                   `json:"tool_choice,omitempty"`
+	Model           string                    `json:"model"`
+	Messages        []DeepSeekMessage         `json:"messages"`
+	Streamed        *bool                     `json:"stream,omitempty"`
+	ResponseFormat  *DeepSeekResponseFormat   `json:"response_format,omitempty"`
+	MaxTokens       *int                      `json:"max_tokens,omitempty"`
+	Temperature     *float32                  `json:"temperature,omitempty"`
+	TopP            *float32                  `json:"top_p,omitempty"`
+	Logprobs        *bool                     `json:"logprobs,omitempty"`
+	Tools           *[]DeepSeekToolDefinition `json:"tools,omitempty"`
+	ToolChoice      *string                   `json:"tool_choice,omitempty"`
+	Thinking        *DeepSeekThinking         `json:"thinking,omitempty"`
+	ReasoningEffort *DeepSeekReasoningEffort  `json:"reasoning_effort,omitempty"`
 }
 
 type DeepSeekResponseFormat struct {
@@ -41,7 +43,28 @@ type DeepSeekToolProperty struct {
 	Description string `json:"description"`
 }
 
-// MARK: - Response structs
+// MARK: - Thinking mode
+
+type DeepSeekThinkingType string
+
+const (
+	ThinkingEnabled  DeepSeekThinkingType = "enabled"
+	ThinkingDisabled DeepSeekThinkingType = "disabled"
+)
+
+type DeepSeekThinking struct {
+	Type DeepSeekThinkingType `json:"type"`
+}
+
+// MARK: - Reasoning effort
+
+type DeepSeekReasoningEffort string
+
+const (
+	ReasoningEffortLow  DeepSeekReasoningEffort = "low"
+	ReasoningEffortHigh DeepSeekReasoningEffort = "high"
+	ReasoningEffortMax  DeepSeekReasoningEffort = "max"
+)
 
 type networkResponse struct {
 	ID                string                `json:"id"`

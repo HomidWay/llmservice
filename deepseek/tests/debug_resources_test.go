@@ -10,7 +10,6 @@ import (
 	"github.com/homidway/llmservice"
 	"github.com/homidway/llmservice/deepseek"
 	"github.com/homidway/llmservice/internal/helpers"
-	"github.com/homidway/llmservice/internal/logger"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 )
@@ -82,9 +81,8 @@ func TestSendMessage_streamed(t *testing.T) {
 
 	apikey := *apiKeyFlag
 
-	log := logger.Default(logger.VerbosityDebug, nil)
 	ctx := context.Background()
-	deepSeek, err := deepseek.NewDeepSeekServiceWithMCP(apikey, ctx, log, mcpConnection)
+	deepSeek, err := deepseek.NewDeepSeekServiceWithMCP(apikey, ctx, mcpConnection)
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -102,7 +100,7 @@ func TestSendMessage_streamed(t *testing.T) {
 		returnChan, err := llmInterfaceCall(
 			deepSeek,
 			messages,
-			deepseek.WithModel(deepseek.NewDeepSeekChatModel()),
+			deepseek.WithModel(deepseek.NewDeepSeekV4FlashModel()),
 			deepseek.WithStreamed(false),
 			deepseek.WithTools([]deepseek.DeepSeekToolDefinition{deepseek.ResourceCallTool()}),
 		)

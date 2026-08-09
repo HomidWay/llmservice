@@ -8,15 +8,17 @@ import (
 // MARK: - Concrete options
 
 type DeepSeekOptions struct {
-	model          DeepSeekModel
-	streamed       *bool
-	responseFormat *string
-	maxTokens      *int
-	temperature    *float32
-	topP           *float32
-	logprobs       *bool
-	tools          *[]DeepSeekToolDefinition
-	toolChoice     *string
+	model           DeepSeekModel
+	streamed        *bool
+	responseFormat  *string
+	maxTokens       *int
+	temperature     *float32
+	topP            *float32
+	logprobs        *bool
+	tools           *[]DeepSeekToolDefinition
+	toolChoice      *string
+	thinking        *DeepSeekThinking
+	reasoningEffort *DeepSeekReasoningEffort
 }
 
 // MARK: - Option setters interface
@@ -230,7 +232,57 @@ func WithTools(tools []DeepSeekToolDefinition) *DeepSeekOptionTools {
 	return &DeepSeekOptionTools{tools: tools}
 }
 
-// MARK - ToolChoice option setters
+// MARK - Thinking option setters
+
+type DeepSeekOptionThinking struct {
+	thinking DeepSeekThinking
+}
+
+func (opt DeepSeekOptionThinking) applyFunc(dsOpt *DeepSeekOptions) {
+	dsOpt.thinking = &opt.thinking
+}
+
+func (o *DeepSeekOptionThinking) Apply(option interface{}) error {
+	if deepSeekOption, ok := option.(*DeepSeekOptions); ok {
+		o.applyFunc(deepSeekOption)
+	} else {
+		return helpers.NewInvalidOptionError((*DeepSeekOption)(nil), option)
+	}
+
+	return nil
+}
+
+func WithThinking(enabled bool) *DeepSeekOptionThinking {
+	t := ThinkingDisabled
+	if enabled {
+		t = ThinkingEnabled
+	}
+	return &DeepSeekOptionThinking{thinking: DeepSeekThinking{Type: t}}
+}
+
+// MARK - ReasoningEffort option setters
+
+type DeepSeekOptionReasoningEffort struct {
+	ReasoningEffort DeepSeekReasoningEffort
+}
+
+func (opt DeepSeekOptionReasoningEffort) applyFunc(dsOpt *DeepSeekOptions) {
+	dsOpt.reasoningEffort = &opt.ReasoningEffort
+}
+
+func (o *DeepSeekOptionReasoningEffort) Apply(option interface{}) error {
+	if deepSeekOption, ok := option.(*DeepSeekOptions); ok {
+		o.applyFunc(deepSeekOption)
+	} else {
+		return helpers.NewInvalidOptionError((*DeepSeekOption)(nil), option)
+	}
+
+	return nil
+}
+
+func WithReasoningEffort(effort DeepSeekReasoningEffort) *DeepSeekOptionReasoningEffort {
+	return &DeepSeekOptionReasoningEffort{ReasoningEffort: effort}
+}
 
 type DeepSeekOptionToolChoice struct {
 	toolChoice string
@@ -277,7 +329,9 @@ func isValidOptionType(opt DeepSeekOption) bool {
 		*DeepSeekOptionTopP,
 		*DeepSeekOptionLogprobs,
 		*DeepSeekOptionTools,
-		*DeepSeekOptionToolChoice:
+		*DeepSeekOptionToolChoice,
+		*DeepSeekOptionThinking,
+		*DeepSeekOptionReasoningEffort:
 		return true
 	default:
 		return false
