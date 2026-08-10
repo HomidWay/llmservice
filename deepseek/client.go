@@ -127,7 +127,7 @@ func (ds *DeepSeekAIService) SendMessage(
 			errDescription = responseErr.Error.Message
 		}
 
-		return nil, errors.Join(DeepSeekResponseErr, fmt.Errorf("status code: %d. description: %s", resp.StatusCode, errDescription))
+		return nil, errors.Join(DeepSeekResponseErr, fmt.Errorf("status code: %d. description: %s\n\nBody: %s", resp.StatusCode, errDescription, string(rawBody)))
 	}
 
 	returnChan := ds.handleResponse(ctx, resp.Body)
